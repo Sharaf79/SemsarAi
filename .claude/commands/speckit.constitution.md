@@ -1,84 +1,317 @@
+🚀 SEMSAR AI — FULL BACKEND PROMPT (DATA COLLECTION + NEGOTIATION ENGINE)
+
+You are a senior backend engineer and system architect متخصص في NestJS + Prisma + scalable SaaS systems.
+
+Your task is to build a production-ready backend for a real estate AI platform called "Semsar AI".
+
+The system consists of TWO MAIN PHASES:
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🧩 PHASE 1: GUIDED DATA COLLECTION ENGINE (CHAT-BASED)
+━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 الهدف:
+جمع بيانات العقار من المستخدم عن طريق Chat UI ولكن باستخدام State Machine (NOT free chat).
+
+⚠️ قواعد مهمة:
+
+* المستخدم لا يمكنه تخطي أي خطوة
+* كل خطوة سؤال واحد فقط
+* الإجابات تكون structured (multi-choice / input)
+* يتم حفظ البيانات تدريجيًا في draft
+* بعد الانتهاء يتم عرض نموذج مراجعة قابل للتعديل
+* المستخدم يمكنه رفع صور وفيديو
+* عند التأكيد يتم حفظ البيانات في properties table
+
 ---
-description: Create or update the project constitution from interactive or provided principle inputs, ensuring all dependent templates stay in sync.
-handoffs: 
-  - label: Build Specification
-    agent: speckit.specify
-    prompt: Implement the feature specification based on the updated constitution. I want to build...
+
+🗂️ DATABASE MODELS (PRISMA)
+
+1. property_drafts
+
+* id
+* user_id
+* current_step (enum)
+* data (JSON)
+* is_completed (boolean)
+* created_at
+* updated_at
+
+2. properties
+
+* id
+* user_id
+* title
+* description
+* price
+* type (sale, rent)
+* property_type (apartment, villa, shop, office)
+* bedrooms
+* bathrooms
+* area_m2
+* governorate
+* city
+* district
+* zone
+* street
+* nearest_landmark
+* latitude
+* longitude
+* created_at
+
+3. property_media
+
+* id
+* draft_id (nullable)
+* property_id (nullable)
+* url
+* type (image, video)
+* created_at
+
 ---
 
-## User Input
+🧠 STATE MACHINE
 
-```text
-$ARGUMENTS
-```
+enum OnboardingStep {
+PROPERTY_TYPE,
+LISTING_TYPE,
+LOCATION,
+DETAILS,
+PRICE,
+MEDIA,
+REVIEW,
+COMPLETED
+}
 
-You **MUST** consider the user input before proceeding (if not empty).
+---
 
-## Outline
+🧠 QUESTIONS (Egyptian Arabic polite)
 
-You are updating the project constitution at `.specify/memory/constitution.md`. This file is a TEMPLATE containing placeholder tokens in square brackets (e.g. `[PROJECT_NAME]`, `[PRINCIPLE_1_NAME]`). Your job is to (a) collect/derive concrete values, (b) fill the template precisely, and (c) propagate any amendments across dependent artifacts.
+PROPERTY_TYPE:
+"حضرتك نوع العقار ايه؟"
+options: ["شقة", "فيلا", "محل", "مكتب"]
 
-**Note**: If `.specify/memory/constitution.md` does not exist yet, it should have been initialized from `.specify/templates/constitution-template.md` during project setup. If it's missing, copy the template first.
+LISTING_TYPE:
+"عايز تبيع ولا تأجر؟"
+options: ["بيع", "إيجار"]
 
-Follow this execution flow:
+LOCATION:
+"حدد الموقع من فضلك"
+fields:
 
-1. Load the existing constitution at `.specify/memory/constitution.md`.
-   - Identify every placeholder token of the form `[ALL_CAPS_IDENTIFIER]`.
-   **IMPORTANT**: The user might require less or more principles than the ones used in the template. If a number is specified, respect that - follow the general template. You will update the doc accordingly.
+* governorate
+* city
+* district
+* zone
+* nearest_landmark
 
-2. Collect/derive values for placeholders:
-   - If user input (conversation) supplies a value, use it.
-   - Otherwise infer from existing repo context (README, docs, prior constitution versions if embedded).
-   - For governance dates: `RATIFICATION_DATE` is the original adoption date (if unknown ask or mark TODO), `LAST_AMENDED_DATE` is today if changes are made, otherwise keep previous.
-   - `CONSTITUTION_VERSION` must increment according to semantic versioning rules:
-     - MAJOR: Backward incompatible governance/principle removals or redefinitions.
-     - MINOR: New principle/section added or materially expanded guidance.
-     - PATCH: Clarifications, wording, typo fixes, non-semantic refinements.
-   - If version bump type ambiguous, propose reasoning before finalizing.
+DETAILS:
 
-3. Draft the updated constitution content:
-   - Replace every placeholder with concrete text (no bracketed tokens left except intentionally retained template slots that the project has chosen not to define yet—explicitly justify any left).
-   - Preserve heading hierarchy and comments can be removed once replaced unless they still add clarifying guidance.
-   - Ensure each Principle section: succinct name line, paragraph (or bullet list) capturing non‑negotiable rules, explicit rationale if not obvious.
-   - Ensure Governance section lists amendment procedure, versioning policy, and compliance review expectations.
+* bedrooms
+* bathrooms
+* area
 
-4. Consistency propagation checklist (convert prior checklist into active validations):
-   - Read `.specify/templates/plan-template.md` and ensure any "Constitution Check" or rules align with updated principles.
-   - Read `.specify/templates/spec-template.md` for scope/requirements alignment—update if constitution adds/removes mandatory sections or constraints.
-   - Read `.specify/templates/tasks-template.md` and ensure task categorization reflects new or removed principle-driven task types (e.g., observability, versioning, testing discipline).
-   - Read each command file in `.specify/templates/commands/*.md` (including this one) to verify no outdated references (agent-specific names like CLAUDE only) remain when generic guidance is required.
-   - Read any runtime guidance docs (e.g., `README.md`, `docs/quickstart.md`, or agent-specific guidance files if present). Update references to principles changed.
+PRICE:
+"السعر المتوقع كام؟"
 
-5. Produce a Sync Impact Report (prepend as an HTML comment at top of the constitution file after update):
-   - Version change: old → new
-   - List of modified principles (old title → new title if renamed)
-   - Added sections
-   - Removed sections
-   - Templates requiring updates (✅ updated / ⚠ pending) with file paths
-   - Follow-up TODOs if any placeholders intentionally deferred.
+MEDIA:
+"تحب تضيف صور أو فيديوهات؟"
 
-6. Validation before final output:
-   - No remaining unexplained bracket tokens.
-   - Version line matches report.
-   - Dates ISO format YYYY-MM-DD.
-   - Principles are declarative, testable, and free of vague language ("should" → replace with MUST/SHOULD rationale where appropriate).
+---
 
-7. Write the completed constitution back to `.specify/memory/constitution.md` (overwrite).
+⚙️ CORE LOGIC
 
-8. Output a final summary to the user with:
-   - New version and bump rationale.
-   - Any files flagged for manual follow-up.
-   - Suggested commit message (e.g., `docs: amend constitution to vX.Y.Z (principle additions + governance update)`).
+* startOrResumeDraft(userId)
+* getCurrentQuestion(userId)
+* submitAnswer(userId, step, answer)
+* validate step order strictly
+* store data in JSON
+* move to next step
 
-Formatting & Style Requirements:
+---
 
-- Use Markdown headings exactly as in the template (do not demote/promote levels).
-- Wrap long rationale lines to keep readability (<100 chars ideally) but do not hard enforce with awkward breaks.
-- Keep a single blank line between sections.
-- Avoid trailing whitespace.
+🧾 REVIEW STEP
 
-If the user supplies partial updates (e.g., only one principle revision), still perform validation and version decision steps.
+Return editable form:
 
-If critical info missing (e.g., ratification date truly unknown), insert `TODO(<FIELD_NAME>): explanation` and include in the Sync Impact Report under deferred items.
+* كل field قابل للتعديل
+* المستخدم يقدر يرجع لأي خطوة
 
-Do not create a new template; always operate on the existing `.specify/memory/constitution.md` file.
+---
+
+📸 MEDIA
+
+* Upload linked to draft_id
+* After submit → attach to property_id
+
+---
+
+✅ FINAL SUBMIT
+
+* validate all required fields
+* create property
+* attach media
+* mark draft completed
+
+---
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🤖 PHASE 2: NEGOTIATION ENGINE (CONTROLLED, NOT CHAT)
+━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 الهدف:
+تنفيذ عملية تفاوض بين buyer و seller باستخدام algorithm controlled system
+
+⚠️ قواعد:
+
+* لا يوجد chat مباشر بين المستخدمين
+* AI لا يقرر — فقط يصيغ الرسائل
+* كل القرارات من negotiation engine
+
+---
+
+🗂️ DATABASE
+
+negotiations
+
+* id
+* property_id
+* buyer_id
+* seller_id
+* min_price (seller)
+* max_price (buyer)
+* current_offer
+* round_number
+* status (active, agreed, failed)
+
+offers
+
+* id
+* negotiation_id
+* amount
+* round
+* created_by (AI)
+* created_at
+
+---
+
+🧠 NEGOTIATION FLOW
+
+1. عرض السعر الأساسي (listing price)
+2. buyer يحدد max budget
+3. seller يحدد min acceptable price
+4. يبدأ التفاوض
+
+---
+
+🧠 ALGORITHM
+
+function nextStep():
+
+* if current_offer >= min_price → ACCEPT
+* if round > max_rounds → FAIL
+* else → COUNTER
+
+---
+
+🎯 COUNTER FORMULA
+
+gap = max_price - min_price
+
+concession:
+
+* round 1-2 → 5%
+* round 3-5 → 10%
+* round 6+ → 15%
+
+counter_offer = current_offer + (gap * concession)
+
+---
+
+🎯 FIRST OFFER (ANCHOR)
+
+initial_offer = max_price * 0.85
+
+---
+
+🎯 MAX ROUNDS
+
+max_rounds = 6
+
+---
+
+🤖 AI MESSAGE (Egyptian Arabic)
+
+* Counter:
+  "بكل احترام، السعر الحالي هو {price} جنيه. هل يناسب حضرتك؟"
+
+* Accept:
+  "تم الاتفاق على {price} جنيه. برجاء استكمال الدفع."
+
+* Reject:
+  "نأسف، لم نتمكن من الوصول لاتفاق مناسب."
+
+---
+
+🔒 USER ACTIONS
+
+User cannot type freely.
+
+Allowed actions:
+
+* accept
+* reject
+* request_counter (optional bounded)
+
+---
+
+💰 DEAL CREATION
+
+If accepted:
+
+* create deal
+* trigger payment flow
+
+If failed:
+
+* mark negotiation failed
+
+---
+
+📡 API ENDPOINTS
+
+PHASE 1:
+POST /onboarding/start
+GET /onboarding/question
+POST /onboarding/answer
+GET /onboarding/review
+POST /onboarding/submit
+POST /onboarding/upload-media
+
+PHASE 2:
+POST /negotiation/start
+POST /negotiation/next-step
+GET /negotiation/status
+
+---
+
+📦 EXPECTED OUTPUT
+
+* Prisma schema
+* NestJS modules
+* Services (onboarding + negotiation)
+* Controllers
+* DTOs
+* Validation
+* Example responses
+
+---
+
+🎯 FINAL GOAL
+
+Build a system where:
+
+* Data collection is structured and controlled
+* Negotiation is algorithm-driven
+* AI is only a communication layer
+* Backend enforces all logic

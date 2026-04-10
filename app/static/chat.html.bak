@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سمسار AI — Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0b141a;
+            color: #e9edef;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ─────────────────────────────── */
+        .header {
+            background: #202c33;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid #2a3942;
+        }
+        .header .avatar {
+            width: 42px; height: 42px;
+            border-radius: 50%;
+            background: #00a884;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; font-weight: bold; color: #fff;
+        }
+        .header .info h2 { font-size: 16px; font-weight: 600; }
+        .header .info small { color: #8696a0; font-size: 12px; }
+
+        /* ── Chat area ──────────────────────────── */
+        .chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 60px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            background: #0b141a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect fill='%230b141a'/%3E%3C/svg%3E");
+        }
+
+        .msg {
+            max-width: 65%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14.5px;
+            line-height: 1.55;
+            position: relative;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .msg .time {
+            font-size: 11px;
+            color: #ffffff99;
+            float: left;
+            margin-top: 4px;
+            margin-right: 8px;
+        }
+        .msg.bot {
+            background: #202c33;
+            align-self: flex-start;
+            border-top-right-radius: 0;
+        }
+        .msg.user {
+            background: #005c4b;
+            align-self: flex-end;
+            border-top-left-radius: 0;
+        }
+
+        .msg.system {
+            align-self: center;
+            background: #182229;
+            color: #8696a0;
+            font-size: 12px;
+            border-radius: 6px;
+            padding: 6px 14px;
+            max-width: 80%;
+            text-align: center;
+        }
+
+        /* ── Typing indicator ───────────────────── */
+        .typing { display: none; align-self: flex-start; padding: 10px 16px; }
+        .typing.visible { display: flex; gap: 4px; }
+        .typing span {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #8696a0;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing span:nth-child(2) { animation-delay: 0.16s; }
+        .typing span:nth-child(3) { animation-delay: 0.32s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* ── Input bar ──────────────────────────── */
+        .input-bar {
+            background: #202c33;
+            padding: 10px 16px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .input-bar input {
+            flex: 1;
+            background: #2a3942;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #e9edef;
+            font-size: 15px;
+            outline: none;
+            direction: rtl;
+        }
+        .input-bar input::placeholder { color: #8696a0; }
+        .input-bar button {
+            background: #00a884;
+            border: none;
+            border-radius: 50%;
+            width: 42px; height: 42px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+        }
+        .input-bar button:hover { background: #06cf9c; }
+        .input-bar button:disabled { background: #2a3942; cursor: default; }
+        .input-bar button svg { fill: #e9edef; }
+
+        /* ── Quick-reply option buttons ─────────── */
+        .options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 6px;
+            align-self: flex-start;
+            max-width: 70%;
+        }
+        .options button {
+            background: transparent;
+            border: 1.5px solid #00a884;
+            border-radius: 18px;
+            color: #00a884;
+            padding: 6px 16px;
+            font-size: 13.5px;
+            cursor: pointer;
+            transition: all 0.18s;
+            direction: rtl;
+        }
+        .options button:hover {
+            background: #00a884;
+            color: #fff;
+        }
+
+        @media (max-width: 600px) {
+            .chat { padding: 12px 12px; }
+            .msg { max-width: 85%; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="avatar">س</div>
+        <div class="info">
+            <h2>سمسار AI</h2>
+            <small id="status-text">اختر دورك للبدء</small>
+        </div>
+    </div>
+
+    <!-- Chat area -->
+    <div class="chat" id="chat">
+        <div class="msg system">أهلاً بك في سمسار AI! جاري تحميل الأسئلة…</div>
+    </div>
+
+    <!-- Typing indicator -->
+    <div class="typing" id="typing"><span></span><span></span><span></span></div>
+
+    <!-- Form area for multi-field inputs (LOCATION / DETAILS) -->
+    <div class="form-area" id="form-area" style="display:none;"></div>
+
+    <!-- Number input bar (price) -->
+    <div class="number-bar" id="number-bar" style="display:none;">
+        <input type="number" id="number-input" inputmode="numeric" placeholder="أدخل الرقم…"
+               onkeydown="if(event.key==='Enter') sendNumber()">
+        <span class="number-unit">ج.م</span>
+        <button id="number-btn" onclick="sendNumber()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Free-text input bar (file/review/fallback) -->
+    <div class="input-bar" id="input-bar" style="display:none;">
+        <input type="text" id="input" placeholder="اكتب رسالتك هنا…"
+               onkeydown="if(event.key==='Enter') send()">
+        <button id="send-btn" onclick="send()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Locked bar shown when structured input is required -->
+    <div class="input-bar locked-bar" id="locked-bar">
+        <input type="text" disabled placeholder="اختر من الأزرار أعلاه ☝️">
+        <button disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+        </button>
+    </div>
+
+    <style>
+        .form-area {
+            background: #202c33;
+            padding: 14px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-top: 1px solid #2a3942;
+        }
+        .form-area .form-title {
+            color: #00a884;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        .form-area .field-row {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .form-area label {
+            color: #8696a0;
+            font-size: 12px;
+        }
+        .form-area label .req { color: #ef4444; }
+        .form-area input {
+            background: #2a3942;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 9px 12px;
+            color: #e9edef;
+            font-size: 14px;
+            outline: none;
+            direction: rtl;
+            transition: border-color 0.2s;
+        }
+        .form-area input:focus { border-color: #00a884; }
+        .form-area .form-submit {
+            background: #00a884;
+            border: none;
+            border-radius: 8px;
+            padding: 11px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 6px;
+            transition: background 0.2s;
+        }
+        .form-area .form-submit:hover { background: #06cf9c; }
+        .form-area .form-submit:disabled { background: #2a3942; cursor: default; }
+
+        .number-bar {
+            background: #202c33;
+            padding: 10px 16px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid #2a3942;
+        }
+        .number-bar input {
+            flex: 1;
+            background: #2a3942;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #e9edef;
+            font-size: 17px;
+            font-weight: 600;
+            outline: none;
+            direction: ltr;
+            text-align: right;
+            transition: border-color 0.2s;
+            /* hide spinner arrows */
+            -moz-appearance: textfield;
+        }
+        .number-bar input::-webkit-inner-spin-button,
+        .number-bar input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .number-bar input:focus { border-color: #00a884; }
+        .number-bar .number-unit {
+            color: #8696a0;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .number-bar button {
+            background: #00a884;
+            border: none;
+            border-radius: 50%;
+            width: 42px; height: 42px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .number-bar button:hover { background: #06cf9c; }
+        .number-bar button svg { fill: #e9edef; }
+
+        .locked-bar input { cursor: not-allowed; }
+    </style>
+
+    <script>
+        const chatEl    = document.getElementById('chat');
+        const inputBar  = document.getElementById('input-bar');
+        const inputEl   = document.getElementById('input');
+        const sendBtn   = document.getElementById('send-btn');
+        const typingEl  = document.getElementById('typing');
+        const statusEl  = document.getElementById('status-text');
+        const formArea  = document.getElementById('form-area');
+        const numberBar = document.getElementById('number-bar');
+        const numberInp = document.getElementById('number-input');
+        const lockedBar = document.getElementById('locked-bar');
+
+        const USERID = 'test-user-001';
+        let currentStep = null;
+        let currentInputType = null; // tracks what's active
+
+        function timeStr() {
+            return new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function addMsg(text, who) {
+            const div = document.createElement('div');
+            div.className = 'msg ' + who;
+            div.innerHTML = text.replace(/\n/g, '<br>') + `<span class="time">${timeStr()}</span>`;
+            chatEl.appendChild(div);
+            chatEl.scrollTop = chatEl.scrollHeight;
+            return div;
+        }
+
+        /** Hide ALL interactive areas and show the locked input bar */
+        function hideAllInputs() {
+            document.querySelectorAll('.options').forEach(el => el.remove());
+            formArea.style.display = 'none';
+            formArea.innerHTML = '';
+            numberBar.style.display = 'none';
+            numberInp.value = '';
+            inputBar.style.display = 'none';
+            inputEl.value = '';
+            lockedBar.style.display = 'flex';
+            currentInputType = null;
+        }
+
+        /** Show only the specified input type, hide everything else */
+        function activateInput(type) {
+            hideAllInputs();
+            currentInputType = type;
+            if (type === 'multi-choice') {
+                // locked bar stays visible — user picks from buttons
+                lockedBar.style.display = 'flex';
+                lockedBar.querySelector('input').placeholder = 'اختر من الأزرار أعلاه ☝️';
+            } else if (type === 'form') {
+                lockedBar.style.display = 'none';
+                // form area shown separately by showForm()
+            } else if (type === 'number') {
+                lockedBar.style.display = 'none';
+                numberBar.style.display = 'flex';
+                numberInp.value = '';
+                numberInp.focus();
+            } else if (type === 'text') {
+                lockedBar.style.display = 'none';
+                inputBar.style.display = 'flex';
+                inputEl.focus();
+            }
+        }
+
+        function addOptions(options) {
+            if (!options || options.length === 0) return;
+            const row = document.createElement('div');
+            row.className = 'options';
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                // Support both string options and { id, label } objects
+                const isObject = typeof opt === 'object' && opt !== null && opt.label;
+                const displayText = isObject ? opt.label : opt;
+                const answerValue = isObject ? opt : opt; // send full object for location steps
+
+                btn.textContent = displayText;
+                btn.onclick = () => {
+                    // Disable all option buttons immediately
+                    row.querySelectorAll('button').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+                    btn.style.opacity = '1';
+                    btn.style.background = '#00a884';
+                    btn.style.color = '#fff';
+                    hideAllInputs();
+                    addMsg(displayText, 'user');
+                    submitAnswer(answerValue);
+                };
+                row.appendChild(btn);
+            });
+            chatEl.appendChild(row);
+            chatEl.scrollTop = chatEl.scrollHeight;
+        }
+
+        function showForm(fields) {
+            formArea.innerHTML = '';
+
+            const title = document.createElement('div');
+            title.className = 'form-title';
+            title.textContent = '📝 املأ البيانات التالية:';
+            formArea.appendChild(title);
+
+            fields.forEach((f, i) => {
+                const row = document.createElement('div');
+                row.className = 'field-row';
+                const lbl = document.createElement('label');
+                lbl.innerHTML = f.label + (f.required ? ' <span class="req">*</span>' : '');
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.dataset.name = f.name;
+                inp.dataset.required = f.required ? '1' : '0';
+                inp.placeholder = f.label;
+                // Enter key moves to next field or submits
+                inp.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const allInputs = [...formArea.querySelectorAll('input')];
+                        const idx = allInputs.indexOf(inp);
+                        if (idx < allInputs.length - 1) {
+                            allInputs[idx + 1].focus();
+                        } else {
+                            formArea.querySelector('.form-submit')?.click();
+                        }
+                    }
+                });
+                row.appendChild(lbl);
+                row.appendChild(inp);
+                formArea.appendChild(row);
+            });
+
+            const btn = document.createElement('button');
+            btn.className = 'form-submit';
+            btn.textContent = 'تأكيد ✓';
+            btn.onclick = () => {
+                // Validate required fields
+                const inputs = formArea.querySelectorAll('input');
+                const answer = {};
+                let valid = true;
+                inputs.forEach(inp => {
+                    const val = inp.value.trim();
+                    if (inp.dataset.required === '1' && !val) {
+                        inp.style.borderColor = '#ef4444';
+                        valid = false;
+                    } else {
+                        inp.style.borderColor = 'transparent';
+                    }
+                    if (val) answer[inp.dataset.name] = val;
+                });
+                if (!valid) return;
+
+                const summary = Object.values(answer).join('، ') || '—';
+                btn.disabled = true;
+                hideAllInputs();
+                addMsg(summary, 'user');
+                submitAnswer(answer);
+            };
+            formArea.appendChild(btn);
+            formArea.style.display = 'flex';
+            formArea.querySelector('input')?.focus();
+        }
+
+        function setTyping(visible) {
+            typingEl.classList.toggle('visible', visible);
+            chatEl.scrollTop = chatEl.scrollHeight;
+        }
+
+        function showQuestion(q) {
+            if (!q || !q.question) {
+                hideAllInputs();
+                addMsg('✅ تم الانتهاء من التسجيل! شكراً لك 🎉', 'bot');
+                statusEl.textContent = 'اكتمل';
+                return;
+            }
+
+            currentStep = q.step;
+            addMsg(q.question, 'bot');
+
+            if (q.inputType === 'multi-choice' && q.options) {
+                activateInput('multi-choice');
+                addOptions(q.options);
+            } else if (q.inputType === 'form' && q.fields) {
+                activateInput('form');
+                showForm(q.fields);
+            } else if (q.inputType === 'number') {
+                activateInput('number');
+            } else if (q.inputType === 'file') {
+                activateInput('text');
+                inputEl.placeholder = 'اكتب "تخطي" أو أرسل رابط الصور…';
+            } else if (q.inputType === 'display') {
+                activateInput('text');
+                inputEl.placeholder = 'اكتب "تأكيد" للمتابعة…';
+            } else {
+                activateInput('text');
+            }
+        }
+
+        async function startOnboarding() {
+            setTyping(true);
+            statusEl.textContent = 'جاري الاتصال…';
+            try {
+                const res = await fetch('/onboarding/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: USERID })
+                });
+                const data = await res.json();
+                setTyping(false);
+                statusEl.textContent = 'متصل';
+                if (data.question) {
+                    showQuestion(data.question);
+                } else if (data.message) {
+                    addMsg('⚠️ ' + data.message, 'bot');
+                }
+            } catch (e) {
+                setTyping(false);
+                statusEl.textContent = 'غير متصل';
+                addMsg('⚠️ لا يوجد اتصال بالخادم — تأكد أن NestJS شغال على 3000', 'bot');
+            }
+        }
+
+        async function submitAnswer(answer) {
+            setTyping(true);
+            try {
+                const res = await fetch('/onboarding/answer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: USERID, step: currentStep, answer })
+                });
+                const data = await res.json();
+                setTyping(false);
+                if (data.nextQuestion) {
+                    showQuestion(data.nextQuestion);
+                } else if (data.message) {
+                    addMsg('⚠️ ' + data.message, 'bot');
+                    // Re-fetch current question to let user retry
+                    const retry = await fetch(`/onboarding/question?userId=${USERID}`);
+                    const q = await retry.json();
+                    if (q.step) showQuestion(q);
+                } else {
+                    addMsg('✅ تم!', 'bot');
+                }
+            } catch (e) {
+                setTyping(false);
+                addMsg('⚠️ خطأ في الاتصال', 'bot');
+            }
+        }
+
+        /** Send from free-text input bar */
+        function send() {
+            const text = inputEl.value.trim();
+            if (!text) return;
+            hideAllInputs();
+            addMsg(text, 'user');
+            inputEl.value = '';
+            submitAnswer(text);
+        }
+
+        /** Send from number input bar */
+        function sendNumber() {
+            const val = numberInp.value.trim();
+            if (!val || isNaN(Number(val)) || Number(val) <= 0) {
+                numberInp.style.borderColor = '#ef4444';
+                return;
+            }
+            const formatted = Number(val).toLocaleString('en') + ' ج.م';
+            hideAllInputs();
+            addMsg(formatted, 'user');
+            submitAnswer(val);
+        }
+
+        // Auto-start onboarding on page load
+        startOnboarding();
+    </script>
+</body>
+</html>

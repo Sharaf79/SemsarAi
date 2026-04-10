@@ -1,0 +1,33 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
+dist/
+build/
+*.egg-info/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
+
+# Node.js / TypeScript / NestJS
+node_modules/
+backend/dist/
+backend/build/
+coverage/
+*.log
+npm-debug.log*
+
+# Prisma
+backend/generated/

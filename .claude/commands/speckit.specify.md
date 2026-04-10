@@ -1,306 +1,563 @@
----
-description: Create or update the feature specification from a natural language feature description.
-handoffs: 
-  - label: Build Technical Plan
-    agent: speckit.plan
-    prompt: Create a plan for the spec. I am building with...
-  - label: Clarify Spec Requirements
-    agent: speckit.clarify
-    prompt: Clarify specification requirements
-    send: true
+# Semsar AI: Technical Specification (v3.0)
+
+**Based on**: Constitution — 2-Phase Architecture (Data Collection + Negotiation Engine)
+**Created**: 2026-03-31
+**Status**: Active
+**Stack**: NestJS 11 · Prisma 6.x · MySQL · Gemini 2.5 Flash · FastAPI (Chat UI)
+
 ---
 
-## User Input
+## 1. System Architecture Overview
 
-```text
-$ARGUMENTS
+Semsar AI is a **controlled real-estate platform** with two distinct phases:
+
+| Phase | Name | Mode | AI Role |
+|-------|------|------|---------|
+| **Phase 1** | Guided Data Collection | Chat-based State Machine | Communication layer — asks questions, validates answers |
+| **Phase 2** | Negotiation Engine | Algorithm-driven (no free chat) | Message formatter only — all decisions by algorithm |
+
+### Core Principles
+- **No free chat** — every interaction is structured (multi-choice / bounded input)
+- **AI does NOT decide** — backend enforces all logic, AI only formats messages
+- **State machine driven** — users cannot skip steps
+- **One question per step** — sequential, never parallel
+- **Data saved progressively** — draft JSON updated after every answer
+
+### Technology Stack
+- **Backend**: NestJS 11 + Prisma 6.x + MySQL
+- **LLM**: Gemini 2.5 Flash (message formatting & extraction only)
+- **Chat UI**: FastAPI + static HTML (development/demo)
+- **Production Channel**: WhatsApp Cloud API (future)
+- **Language**: Egyptian Arabic (polite register) — فصحى in UI, عامية مهذبة in chat
+
+---
+
+## 2. Database Schema
+
+### 2.1 Existing Models (Keep As-Is)
+
+The following models from the current Prisma schema remain unchanged:
+
+- **User** — user accounts with phone, email, status, type
+- **LowerOffice** — real estate offices/brokers
+- **Deal** — finalized deals (created after successful negotiation)
+- **Payment** — payment records (deposit, commission, insurance)
+- **AiLog** — AI interaction audit trail
+
+### 2.2 Models to Modify
+
+#### Property (Enhanced)
+
+Add `property_type` field and ensure alignment with constitution fields:
+
+```prisma
+model Property {
+  id              String         @id @default(uuid())
+  userId          String         @map("user_id")
+  title           String
+  description     String?        @db.Text
+  price           Decimal        @db.Decimal(14, 2)
+  type            PropertyType                        // SALE | RENT
+  propertyKind    PropertyKind   @map("property_kind") // APARTMENT | VILLA | SHOP | OFFICE
+  bedrooms        Int?
+  bathrooms       Int?
+  areaM2          Decimal?       @db.Decimal(10, 2) @map("area_m2")
+  country         String         @default("Egypt")
+  governorate     String?
+  city            String?
+  district        String?
+  zone            String?
+  street          String?
+  nearestLandmark String?        @map("nearest_landmark")
+  latitude        Decimal?       @db.Decimal(10, 8)
+  longitude       Decimal?       @db.Decimal(11, 8)
+  propertyStatus  PropertyStatus @default(ACTIVE) @map("property_status")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  user            User           @relation(fields: [userId], references: [id])
+  media           PropertyMedia[]
+  negotiations    Negotiation[]
+  drafts          PropertyDraft[]
+}
 ```
 
-You **MUST** consider the user input before proceeding (if not empty).
+### 2.3 New Models (Add)
 
-## Pre-Execution Checks
+#### PropertyDraft
 
-**Check for extension hooks (before specification)**:
-- Check if `.specify/extensions.yml` exists in the project root.
-- If it exists, read it and look for entries under the `hooks.before_specify` key
-- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
-- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
-- For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
-  - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
-  - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
-- For each executable hook, output the following based on its `optional` flag:
-  - **Optional hook** (`optional: true`):
-    ```
-    ## Extension Hooks
+Tracks the onboarding state machine progress. One active draft per user at a time.
 
-    **Optional Pre-Hook**: {extension}
-    Command: `/{command}`
-    Description: {description}
+```prisma
+model PropertyDraft {
+  id          String          @id @default(uuid())
+  userId      String          @map("user_id")
+  propertyId  String?         @map("property_id")   // set after submit
+  currentStep OnboardingStep  @default(PROPERTY_TYPE) @map("current_step")
+  data        Json            @default("{}")          // accumulated answers
+  isCompleted Boolean         @default(false) @map("is_completed")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
 
-    Prompt: {prompt}
-    To execute: `/{command}`
-    ```
-  - **Mandatory hook** (`optional: false`):
-    ```
-    ## Extension Hooks
+  user        User            @relation(fields: [userId], references: [id])
+  property    Property?       @relation(fields: [propertyId], references: [id])
+  media       PropertyMedia[]
 
-    **Automatic Pre-Hook**: {extension}
-    Executing: `/{command}`
-    EXECUTE_COMMAND: {command}
+  @@index([userId])
+  @@index([isCompleted])
+  @@map("property_drafts")
+}
+```
 
-    Wait for the result of the hook command before proceeding to the Outline.
-    ```
-- If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+#### PropertyMedia
 
-## Outline
+Media files linked first to draft, then transferred to property on submit.
 
-The text the user typed after `/speckit.specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
+```prisma
+model PropertyMedia {
+  id         String    @id @default(uuid())
+  draftId    String?   @map("draft_id")
+  propertyId String?   @map("property_id")
+  url        String
+  type       MediaType                      // IMAGE | VIDEO
+  createdAt  DateTime  @default(now()) @map("created_at")
 
-Given that feature description, do this:
+  draft      PropertyDraft? @relation(fields: [draftId], references: [id])
+  property   Property?      @relation(fields: [propertyId], references: [id])
 
-1. **Generate a concise short name** (2-4 words) for the branch:
-   - Analyze the feature description and extract the most meaningful keywords
-   - Create a 2-4 word short name that captures the essence of the feature
-   - Use action-noun format when possible (e.g., "add-user-auth", "fix-payment-bug")
-   - Preserve technical terms and acronyms (OAuth2, API, JWT, etc.)
-   - Keep it concise but descriptive enough to understand the feature at a glance
-   - Examples:
-     - "I want to add user authentication" → "user-auth"
-     - "Implement OAuth2 integration for the API" → "oauth2-api-integration"
-     - "Create a dashboard for analytics" → "analytics-dashboard"
-     - "Fix payment processing timeout bug" → "fix-payment-timeout"
+  @@index([draftId])
+  @@index([propertyId])
+  @@map("property_media")
+}
+```
 
-2. **Create the feature branch** by running the script with `--short-name` (and `--json`). In sequential mode, do NOT pass `--number` — the script auto-detects the next available number. In timestamp mode, the script generates a `YYYYMMDD-HHMMSS` prefix automatically:
+### 2.4 New Enums
 
-   **Branch numbering mode**: Before running the script, check if `.specify/init-options.json` exists and read the `branch_numbering` value.
-   - If `"timestamp"`, add `--timestamp` (Bash) or `-Timestamp` (PowerShell) to the script invocation
-   - If `"sequential"` or absent, do not add any extra flag (default behavior)
+```prisma
+enum OnboardingStep {
+  PROPERTY_TYPE    // "حضرتك نوع العقار ايه؟"
+  LISTING_TYPE     // "عايز تبيع ولا تأجر؟"
+  LOCATION         // governorate, city, district, zone, nearest_landmark
+  DETAILS          // bedrooms, bathrooms, area
+  PRICE            // "السعر المتوقع كام؟"
+  MEDIA            // "تحب تضيف صور أو فيديوهات؟"
+  REVIEW           // editable summary form
+  COMPLETED        // final state
+}
 
-   - Bash example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --short-name "user-auth" "Add user authentication"`
-   - Bash (timestamp): `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --timestamp --short-name "user-auth" "Add user authentication"`
-   - PowerShell example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -ShortName "user-auth" "Add user authentication"`
-   - PowerShell (timestamp): `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -Timestamp -ShortName "user-auth" "Add user authentication"`
+enum PropertyKind {
+  APARTMENT
+  VILLA
+  SHOP
+  OFFICE
+}
 
-   **IMPORTANT**:
-   - Do NOT pass `--number` — the script determines the correct next number automatically
-   - Always include the JSON flag (`--json` for Bash, `-Json` for PowerShell) so the output can be parsed reliably
-   - You must only ever run this script once per feature
-   - The JSON is provided in the terminal as output - always refer to it to get the actual content you're looking for
-   - The JSON output will contain BRANCH_NAME and SPEC_FILE paths
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot")
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+```
 
-3. Load `.specify/templates/spec-template.md` to understand required sections.
+### 2.5 Negotiation Models (Already Exist — Verify)
 
-4. Follow this execution flow:
+The current schema already has `Negotiation` and `Offer` models. Verify they match the constitution:
 
-    1. Parse user description from Input
-       If empty: ERROR "No feature description provided"
-    2. Extract key concepts from description
-       Identify: actors, actions, data, constraints
-    3. For unclear aspects:
-       - Make informed guesses based on context and industry standards
-       - Only mark with [NEEDS CLARIFICATION: specific question] if:
-         - The choice significantly impacts feature scope or user experience
-         - Multiple reasonable interpretations exist with different implications
-         - No reasonable default exists
-       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
-       - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
-    4. Fill User Scenarios & Testing section
-       If no clear user flow: ERROR "Cannot determine user scenarios"
-    5. Generate Functional Requirements
-       Each requirement must be testable
-       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
-    6. Define Success Criteria
-       Create measurable, technology-agnostic outcomes
-       Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
-       Each criterion must be verifiable without implementation details
-    7. Identify Key Entities (if data involved)
-    8. Return: SUCCESS (spec ready for planning)
+| Field | Constitution | Current Schema | Status |
+|-------|-------------|----------------|--------|
+| `min_price` | ✅ seller's minimum | ✅ exists | ✔ Match |
+| `max_price` | ✅ buyer's maximum | ✅ exists | ✔ Match |
+| `current_offer` | ✅ | ✅ exists | ✔ Match |
+| `round_number` | ✅ | ✅ exists | ✔ Match |
+| `status` | active/agreed/failed | ACTIVE/AGREED/FAILED | ✔ Match |
+| `offers.created_by` | AI | default "AI" | ✔ Match |
 
-5. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
+**No changes needed** to Negotiation/Offer models.
 
-6. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
+---
 
-   a. **Create Spec Quality Checklist**: Generate a checklist file at `FEATURE_DIR/checklists/requirements.md` using the checklist template structure with these validation items:
+## 3. Phase 1: Guided Data Collection Engine
 
-      ```markdown
-      # Specification Quality Checklist: [FEATURE NAME]
-      
-      **Purpose**: Validate specification completeness and quality before proceeding to planning
-      **Created**: [DATE]
-      **Feature**: [Link to spec.md]
-      
-      ## Content Quality
-      
-      - [ ] No implementation details (languages, frameworks, APIs)
-      - [ ] Focused on user value and business needs
-      - [ ] Written for non-technical stakeholders
-      - [ ] All mandatory sections completed
-      
-      ## Requirement Completeness
-      
-      - [ ] No [NEEDS CLARIFICATION] markers remain
-      - [ ] Requirements are testable and unambiguous
-      - [ ] Success criteria are measurable
-      - [ ] Success criteria are technology-agnostic (no implementation details)
-      - [ ] All acceptance scenarios are defined
-      - [ ] Edge cases are identified
-      - [ ] Scope is clearly bounded
-      - [ ] Dependencies and assumptions identified
-      
-      ## Feature Readiness
-      
-      - [ ] All functional requirements have clear acceptance criteria
-      - [ ] User scenarios cover primary flows
-      - [ ] Feature meets measurable outcomes defined in Success Criteria
-      - [ ] No implementation details leak into specification
-      
-      ## Notes
-      
-      - Items marked incomplete require spec updates before `/speckit.clarify` or `/speckit.plan`
-      ```
+### 3.1 State Machine Flow
 
-   b. **Run Validation Check**: Review the spec against each checklist item:
-      - For each item, determine if it passes or fails
-      - Document specific issues found (quote relevant spec sections)
+```
+PROPERTY_TYPE → LISTING_TYPE → LOCATION → DETAILS → PRICE → MEDIA → REVIEW → COMPLETED
+     ↑                                                                  │
+     └──────────────────── (user edits from review) ────────────────────┘
+```
 
-   c. **Handle Validation Results**:
+**Rules:**
+- Each step = exactly one question
+- User cannot skip forward
+- User CAN go back from REVIEW to any previous step
+- Answers stored progressively in `PropertyDraft.data` (JSON)
+- After REVIEW confirmation → create Property + attach media → mark draft COMPLETED
 
-      - **If all items pass**: Mark checklist complete and proceed to step 7
+### 3.2 Question Definitions
 
-      - **If items fail (excluding [NEEDS CLARIFICATION])**:
-        1. List the failing items and specific issues
-        2. Update the spec to address each issue
-        3. Re-run validation until all items pass (max 3 iterations)
-        4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
+| Step | Question (Arabic) | Input Type | Options / Fields |
+|------|-------------------|------------|------------------|
+| `PROPERTY_TYPE` | "حضرتك نوع العقار ايه؟" | Multi-choice | شقة · فيلا · محل · مكتب |
+| `LISTING_TYPE` | "عايز تبيع ولا تأجر؟" | Multi-choice | بيع · إيجار |
+| `LOCATION` | "حدد الموقع من فضلك" | Structured form | governorate, city, district, zone, nearest_landmark |
+| `DETAILS` | "تفاصيل العقار" | Structured form | bedrooms, bathrooms, area_m2 |
+| `PRICE` | "السعر المتوقع كام؟" | Numeric input | Free number (EGP) |
+| `MEDIA` | "تحب تضيف صور أو فيديوهات؟" | File upload + skip | Upload or "تخطي" |
+| `REVIEW` | "راجع البيانات وأكد" | Editable summary | All fields displayed, each editable |
 
-      - **If [NEEDS CLARIFICATION] markers remain**:
-        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
-        3. For each clarification needed (max 3), present options to user in this format:
+### 3.3 Onboarding Service
 
-           ```markdown
-           ## Question [N]: [Topic]
-           
-           **Context**: [Quote relevant spec section]
-           
-           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
-           
-           **Suggested Answers**:
-           
-           | Option | Answer | Implications |
-           |--------|--------|--------------|
-           | A      | [First suggested answer] | [What this means for the feature] |
-           | B      | [Second suggested answer] | [What this means for the feature] |
-           | C      | [Third suggested answer] | [What this means for the feature] |
-           | Custom | Provide your own answer | [Explain how to provide custom input] |
-           
-           **Your choice**: _[Wait for user response]_
-           ```
+```typescript
+// src/onboarding/onboarding.service.ts
 
-        4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
-           - Use consistent spacing with pipes aligned
-           - Each cell should have spaces around content: `| Content |` not `|Content|`
-           - Header separator must have at least 3 dashes: `|--------|`
-           - Test that the table renders correctly in markdown preview
-        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
-        6. Present all questions together before waiting for responses
-        7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
-        9. Re-run validation after all clarifications are resolved
+class OnboardingService {
+  // Start a new draft or resume existing incomplete one
+  async startOrResumeDraft(userId: string): Promise<PropertyDraft>
 
-   d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
+  // Get the current question for the user's active draft
+  async getCurrentQuestion(userId: string): Promise<QuestionResponse>
 
-7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
+  // Submit an answer for the current step, validate, advance
+  async submitAnswer(userId: string, step: OnboardingStep, answer: any): Promise<PropertyDraft>
 
-8. **Check for extension hooks**: After reporting completion, check if `.specify/extensions.yml` exists in the project root.
-   - If it exists, read it and look for entries under the `hooks.after_specify` key
-   - If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
-   - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
-   - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
-     - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
-     - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
-   - For each executable hook, output the following based on its `optional` flag:
-     - **Optional hook** (`optional: true`):
-       ```
-       ## Extension Hooks
+  // Get all collected data for review
+  async getReview(userId: string): Promise<ReviewResponse>
 
-       **Optional Hook**: {extension}
-       Command: `/{command}`
-       Description: {description}
+  // Edit a specific field from review (go back to that step)
+  async editField(userId: string, step: OnboardingStep): Promise<QuestionResponse>
 
-       Prompt: {prompt}
-       To execute: `/{command}`
-       ```
-     - **Mandatory hook** (`optional: false`):
-       ```
-       ## Extension Hooks
+  // Final submit: create Property, transfer media, mark complete
+  async finalSubmit(userId: string): Promise<Property>
 
-       **Automatic Hook**: {extension}
-       Executing: `/{command}`
-       EXECUTE_COMMAND: {command}
-       ```
-   - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+  // Upload media file to draft
+  async uploadMedia(userId: string, file: UploadedFile): Promise<PropertyMedia>
+}
+```
 
-**NOTE:** The script creates and checks out the new branch and initializes the spec file before writing.
+### 3.4 Step Validation Rules
 
-## Quick Guidelines
+| Step | Validation |
+|------|-----------|
+| `PROPERTY_TYPE` | Must be one of: APARTMENT, VILLA, SHOP, OFFICE |
+| `LISTING_TYPE` | Must be one of: SALE, RENT |
+| `LOCATION` | `governorate` required, others optional |
+| `DETAILS` | `area_m2` required, `bedrooms`/`bathrooms` required for APARTMENT/VILLA |
+| `PRICE` | Positive number, > 0 |
+| `MEDIA` | Optional — user can skip |
+| `REVIEW` | All required fields must be present |
 
-- Focus on **WHAT** users need and **WHY**.
-- Avoid HOW to implement (no tech stack, APIs, code structure).
-- Written for business stakeholders, not developers.
-- DO NOT create any checklists that are embedded in the spec. That will be a separate command.
+### 3.5 Draft Data JSON Structure
 
-### Section Requirements
+```json
+{
+  "property_type": "APARTMENT",
+  "listing_type": "SALE",
+  "location": {
+    "governorate": "القاهرة",
+    "city": "مدينة نصر",
+    "district": "الحي الثامن",
+    "zone": null,
+    "nearest_landmark": "سيتي ستارز"
+  },
+  "details": {
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "area_m2": 150
+  },
+  "price": 2500000
+}
+```
 
-- **Mandatory sections**: Must be completed for every feature
-- **Optional sections**: Include only when relevant to the feature
-- When a section doesn't apply, remove it entirely (don't leave as "N/A")
+---
 
-### For AI Generation
+## 4. Phase 2: Negotiation Engine
 
-When creating this spec from a user prompt:
+### 4.1 Flow
 
-1. **Make informed guesses**: Use context, industry standards, and common patterns to fill gaps
-2. **Document assumptions**: Record reasonable defaults in the Assumptions section
-3. **Limit clarifications**: Maximum 3 [NEEDS CLARIFICATION] markers - use only for critical decisions that:
-   - Significantly impact feature scope or user experience
-   - Have multiple reasonable interpretations with different implications
-   - Lack any reasonable default
-4. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
-5. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
-6. **Common areas needing clarification** (only if no reasonable default exists):
-   - Feature scope and boundaries (include/exclude specific use cases)
-   - User types and permissions (if multiple conflicting interpretations possible)
-   - Security/compliance requirements (when legally/financially significant)
+```
+1. Property listed (from Phase 1)
+2. Buyer expresses interest → sets max_price (budget)
+3. Seller has already set listing price → system extracts min_price
+4. Engine starts negotiation
+5. Engine calculates offers algorithmically (NO AI decisions)
+6. AI formats messages in Arabic
+7. Max 6 rounds → AGREED or FAILED
+```
 
-**Examples of reasonable defaults** (don't ask about these):
+### 4.2 Algorithm Specification
 
-- Data retention: Industry-standard practices for the domain
-- Performance targets: Standard web/mobile app expectations unless specified
-- Error handling: User-friendly messages with appropriate fallbacks
-- Authentication method: Standard session-based or OAuth2 for web apps
-- Integration patterns: Use project-appropriate patterns (REST/GraphQL for web services, function calls for libraries, CLI args for tools, etc.)
+#### First Offer (Anchor)
+```
+initial_offer = max_price × 0.85
+```
 
-### Success Criteria Guidelines
+#### Concession Formula
+```
+gap = max_price − min_price
 
-Success criteria must be:
+concession_rate:
+  round 1-2  → 5%
+  round 3-5  → 10%
+  round 6+   → 15%
 
-1. **Measurable**: Include specific metrics (time, percentage, count, rate)
-2. **Technology-agnostic**: No mention of frameworks, languages, databases, or tools
-3. **User-focused**: Describe outcomes from user/business perspective, not system internals
-4. **Verifiable**: Can be tested/validated without knowing implementation details
+counter_offer = current_offer + (gap × concession_rate)
+```
 
-**Good examples**:
+#### Decision Logic
+```
+function nextStep(negotiation):
+  if current_offer >= min_price → ACCEPT (status = AGREED)
+  if round_number > 6          → FAIL   (status = FAILED)
+  else                         → COUNTER (new offer)
+```
 
-- "Users can complete checkout in under 3 minutes"
-- "System supports 10,000 concurrent users"
-- "95% of searches return results in under 1 second"
-- "Task completion rate improves by 40%"
+### 4.3 Negotiation Service
 
-**Bad examples** (implementation-focused):
+```typescript
+// src/negotiation/negotiation.service.ts
 
-- "API response time is under 200ms" (too technical, use "Users see results instantly")
-- "Database can handle 1000 TPS" (implementation detail, use user-facing metric)
-- "React components render efficiently" (framework-specific)
-- "Redis cache hit rate above 80%" (technology-specific)
+class NegotiationService {
+  // Start negotiation between buyer and seller for a property
+  async startNegotiation(propertyId: string, buyerId: string): Promise<Negotiation>
+
+  // Calculate and apply next step (counter/accept/fail)
+  async nextStep(negotiationId: string): Promise<NegotiationStepResult>
+
+  // Get current negotiation status
+  async getStatus(negotiationId: string): Promise<NegotiationStatus>
+
+  // Internal: calculate counter offer
+  private calculateCounterOffer(negotiation: Negotiation): Decimal
+
+  // Internal: determine concession rate by round
+  private getConcessionRate(round: number): number
+
+  // Internal: format AI message for the step
+  private formatMessage(action: 'counter' | 'accept' | 'reject', offer?: Decimal): string
+}
+```
+
+### 4.4 User Actions (Bounded — No Free Text)
+
+| Action | Description | Allowed When |
+|--------|------------|--------------|
+| `accept` | Accept current offer | Any active round |
+| `reject` | Reject and end negotiation | Any active round |
+| `request_counter` | Ask engine for next counter | Active + rounds remaining |
+
+### 4.5 AI Message Templates (Egyptian Arabic)
+
+| Action | Message |
+|--------|---------|
+| Counter | "بكل احترام، السعر الحالي هو {price} جنيه. هل يناسب حضرتك؟" |
+| Accept | "تم الاتفاق على {price} جنيه. برجاء استكمال الدفع." |
+| Reject | "نأسف، لم نتمكن من الوصول لاتفاق مناسب." |
+
+---
+
+## 5. API Endpoints
+
+### 5.1 Phase 1 — Onboarding
+
+| Method | Path | Description | Request Body | Response |
+|--------|------|-------------|-------------|----------|
+| `POST` | `/onboarding/start` | Start or resume draft | `{ userId }` | `PropertyDraft` |
+| `GET` | `/onboarding/question` | Get current question | Query: `userId` | `QuestionResponse` |
+| `POST` | `/onboarding/answer` | Submit answer | `{ userId, step, answer }` | `PropertyDraft` |
+| `GET` | `/onboarding/review` | Get review summary | Query: `userId` | `ReviewResponse` |
+| `POST` | `/onboarding/submit` | Final submit | `{ userId }` | `Property` |
+| `POST` | `/onboarding/upload-media` | Upload file | `{ userId, file }` multipart | `PropertyMedia` |
+
+### 5.2 Phase 2 — Negotiation
+
+| Method | Path | Description | Request Body | Response |
+|--------|------|-------------|-------------|----------|
+| `POST` | `/negotiation/start` | Start negotiation | `{ propertyId, buyerId }` | `Negotiation` |
+| `POST` | `/negotiation/next-step` | Execute next step | `{ negotiationId, action }` | `NegotiationStepResult` |
+| `GET` | `/negotiation/status` | Get negotiation status | Query: `negotiationId` | `NegotiationStatusResponse` |
+
+### 5.3 DTOs
+
+```typescript
+// ── Onboarding DTOs ──
+
+class StartOnboardingDto {
+  @IsUUID() userId: string;
+}
+
+class SubmitAnswerDto {
+  @IsUUID() userId: string;
+  @IsEnum(OnboardingStep) step: OnboardingStep;
+  @IsNotEmpty() answer: any; // validated per step
+}
+
+class QuestionResponse {
+  step: OnboardingStep;
+  question: string;        // Arabic text
+  inputType: 'multi-choice' | 'form' | 'number' | 'file';
+  options?: string[];      // for multi-choice
+  fields?: FieldDef[];     // for form-type
+}
+
+class ReviewResponse {
+  draft: PropertyDraft;
+  data: Record<string, any>;
+  isComplete: boolean;
+  missingFields: string[];
+}
+
+// ── Negotiation DTOs ──
+
+class StartNegotiationDto {
+  @IsUUID() propertyId: string;
+  @IsUUID() buyerId: string;
+}
+
+class NextStepDto {
+  @IsUUID() negotiationId: string;
+  @IsEnum(['accept', 'reject', 'request_counter']) action: string;
+}
+
+class NegotiationStepResult {
+  negotiation: Negotiation;
+  action: 'counter' | 'accept' | 'reject';
+  message: string;         // Arabic AI-formatted message
+  offer?: Decimal;
+  isComplete: boolean;
+}
+
+class NegotiationStatusResponse {
+  negotiation: Negotiation;
+  offers: Offer[];
+  currentRound: number;
+  maxRounds: number;       // always 6
+}
+```
+
+---
+
+## 6. NestJS Module Structure
+
+```
+backend/src/
+├── onboarding/
+│   ├── onboarding.module.ts
+│   ├── onboarding.controller.ts
+│   ├── onboarding.service.ts
+│   ├── dto/
+│   │   ├── start-onboarding.dto.ts
+│   │   ├── submit-answer.dto.ts
+│   │   └── question-response.dto.ts
+│   └── constants/
+│       └── questions.ts          # Arabic question text + options
+├── negotiation/
+│   ├── negotiation.module.ts
+│   ├── negotiation.controller.ts
+│   ├── negotiation.service.ts
+│   └── dto/
+│       ├── start-negotiation.dto.ts
+│       ├── next-step.dto.ts
+│       └── negotiation-response.dto.ts
+├── property/                      # (existing, may need updates)
+├── prisma/                        # (existing PrismaService)
+├── gemini/                        # (existing GeminiService)
+└── ...
+```
+
+---
+
+## 7. Chat UI Integration (FastAPI)
+
+The existing FastAPI chat UI (`app/static/chat.html`) will be updated to work with the new structured onboarding flow:
+
+### Current → New Behavior
+
+| Aspect | Old (Free Chat) | New (State Machine) |
+|--------|-----------------|---------------------|
+| Input | Free text always | Multi-choice buttons / structured forms |
+| Flow | AI decides next question | Backend state machine controls flow |
+| Storage | In-memory sessions | PropertyDraft in DB |
+| Skip | User could skip questions | Impossible — strict order |
+| Review | No review step | Full editable review before submit |
+
+### UI Changes Required
+- Render multi-choice options as clickable buttons (already implemented)
+- Add form-mode for LOCATION and DETAILS steps (new)
+- Add file upload widget for MEDIA step (new)
+- Add review/edit screen for REVIEW step (new)
+- Disable free text input when current step expects structured answer
+
+---
+
+## 8. Migration from Old Schema
+
+### Models to Deprecate (Phase Out)
+
+The following old intake models should be kept for backward compatibility but are **superseded** by the new onboarding flow:
+
+| Old Model | Replaced By | Action |
+|-----------|-------------|--------|
+| `Conversation` | `PropertyDraft` (state machine) | Keep but stop using in new flows |
+| `Listing` | `Property` (enhanced) | Keep but stop creating new ones |
+| `Unit` | `Property` (direct) | Keep but stop creating new ones |
+
+### Migration Steps
+
+1. Add new models (`PropertyDraft`, `PropertyMedia`) and enums to Prisma schema
+2. Add `propertyKind` field to `Property` model
+3. Run `prisma migrate dev`
+4. Create `OnboardingModule` and `NegotiationModule`
+5. Update Chat UI to call new `/onboarding/*` endpoints
+6. Old WhatsApp webhook flow continues working (no breaking changes)
+
+---
+
+## 9. Security & Validation
+
+| Concern | Implementation |
+|---------|---------------|
+| Step order enforcement | Service validates `currentStep` matches submitted step |
+| Input validation | DTOs with class-validator decorators |
+| User isolation | All queries filtered by `userId` |
+| Media upload | File type whitelist (jpg, png, mp4), size limit (10MB) |
+| Negotiation integrity | Users cannot modify offers — engine-only |
+| API keys | All in environment variables (Gemini, DB) |
+| Body size limit | Already configured in main.ts |
+
+---
+
+## 10. Testing Strategy
+
+### Unit Tests
+
+| Module | Tests |
+|--------|-------|
+| `OnboardingService` | startOrResumeDraft, getCurrentQuestion (each step), submitAnswer (valid/invalid), finalSubmit, step order enforcement |
+| `NegotiationService` | startNegotiation, calculateCounterOffer (each round), getConcessionRate, nextStep (counter/accept/fail), max rounds |
+| `OnboardingController` | Each endpoint with valid/invalid input |
+| `NegotiationController` | Each endpoint with valid/invalid input |
+
+### Integration Tests (E2E)
+
+1. **Full onboarding flow**: Start → answer all steps → review → submit → verify Property created
+2. **Onboarding resume**: Start → answer 3 steps → close → resume → verify correct step
+3. **Review edit**: Complete to review → edit field → verify goes back to correct step
+4. **Full negotiation**: Start → 3 rounds of counter → accept → verify Deal created
+5. **Negotiation failure**: Start → 6 rounds → fail → verify status FAILED
+6. **Media upload**: Upload during MEDIA step → submit → verify attached to Property
+
+---
+
+## 11. Success Criteria
+
+- [ ] `PropertyDraft` state machine enforces strict step order
+- [ ] All 8 onboarding steps work with correct Arabic questions
+- [ ] Review step shows all data and allows editing
+- [ ] Final submit creates `Property` with all fields populated
+- [ ] Media uploaded to draft is transferred to property on submit
+- [ ] Negotiation engine calculates correct offers per formula
+- [ ] First offer anchors at `max_price × 0.85`
+- [ ] Concession rates match spec (5%/10%/15% by round bracket)
+- [ ] Max 6 rounds enforced
+- [ ] AI only formats messages — never decides
+- [ ] All existing tests (205 unit + 7 e2e) continue passing
+- [ ] New modules have full test coverage

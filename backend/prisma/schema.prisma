@@ -1,0 +1,502 @@
+// Semsar AI — Prisma Schema
+// 8 constitution tables + 3 intake tables = 11 total
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Constitution Tables (Phase 1) ──────────────────────────────
+
+model User {
+  id               String   @id @default(uuid())
+  name             String
+  phone            String   @unique
+  email            String?
+  status           UserStatus @default(ACTIVE)
+  isPhoneVerified  Boolean  @default(false) @map("is_phone_verified")
+  isEmailVerified  Boolean  @default(false) @map("is_email_verified")
+  userType         UserType @default(USER) @map("user_type")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  properties       Property[]
+  buyerNegotiations  Negotiation[] @relation("BuyerNegotiations")
+  sellerNegotiations Negotiation[] @relation("SellerNegotiations")
+  buyerDeals       Deal[]   @relation("BuyerDeals")
+  sellerDeals      Deal[]   @relation("SellerDeals")
+  payments         Payment[]
+  conversations    Conversation[]
+  listings         Listing[]
+  drafts           PropertyDraft[]
+  recommendations  Recommendation[]
+
+  @@map("users")
+}
+
+model Property {
+  id              String         @id @default(uuid())
+  userId          String         @map("user_id")
+  title           String
+  description     String?        @db.Text
+  price           Decimal        @db.Decimal(14, 2)
+  type            PropertyType
+  propertyKind    PropertyKind?  @map("property_kind")
+  bedrooms        Int?
+  bathrooms       Int?
+  areaM2          Decimal?       @db.Decimal(10, 2) @map("area_m2")
+  country         String         @default("Egypt")
+  governorate     String?
+  city            String?
+  district        String?
+  zone            String?
+  street          String?
+  nearestLandmark String?        @map("nearest_landmark")
+  latitude        Decimal?       @db.Decimal(10, 8)
+  longitude       Decimal?       @db.Decimal(11, 8)
+  propertyStatus  PropertyStatus @default(ACTIVE) @map("property_status")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  user            User           @relation(fields: [userId], references: [id])
+  media           PropertyMedia[]
+  negotiations    Negotiation[]
+  drafts          PropertyDraft[]
+  recommendations Recommendation[]
+
+  @@index([userId])
+  @@index([type, propertyStatus])
+  @@index([governorate, city, district])
+  @@map("properties")
+}
+
+model LowerOffice {
+  id                String       @id @default(uuid())
+  officeName        String       @map("office_name")
+  lowerName         String       @map("lower_name")
+  governorate       String?
+  city              String?
+  district          String?
+  zone              String?
+  street            String?
+  phone             String?
+  email             String?
+  age               Int?
+  licenseNumber     String?      @map("license_number")
+  positionTitle     String?      @map("position_title")
+  workingHours      String?      @map("working_hours")
+  ratingScore       Decimal?     @db.Decimal(3, 2) @map("rating_score")
+  maxProperties     Int?         @map("max_properties")
+  notes             String?      @db.Text
+  locationLatitude  Decimal?     @db.Decimal(10, 8) @map("location_latitude")
+  locationLongitude Decimal?     @db.Decimal(11, 8) @map("location_longitude")
+  activeStatus      OfficeStatus @default(ACTIVE) @map("active_status")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  deals             Deal[]
+
+  @@index([governorate, city, district])
+  @@map("lower_offices")
+}
+
+model Negotiation {
+  id            String            @id @default(uuid())
+  propertyId    String            @map("property_id")
+  buyerId       String            @map("buyer_id")
+  sellerId      String            @map("seller_id")
+  status        NegotiationStatus @default(ACTIVE)
+  currentOffer  Decimal?          @db.Decimal(14, 2) @map("current_offer")
+  minPrice      Decimal?          @db.Decimal(14, 2) @map("min_price")
+  maxPrice      Decimal?          @db.Decimal(14, 2) @map("max_price")
+  roundNumber   Int               @default(0) @map("round_number")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  property      Property          @relation(fields: [propertyId], references: [id])
+  buyer         User              @relation("BuyerNegotiations", fields: [buyerId], references: [id])
+  seller        User              @relation("SellerNegotiations", fields: [sellerId], references: [id])
+  offers        Offer[]
+  deals         Deal[]
+  aiLogs        AiLog[]
+
+  @@index([propertyId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@map("negotiations")
+}
+
+model Offer {
+  id            String   @id @default(uuid())
+  negotiationId String   @map("negotiation_id")
+  amount        Decimal  @db.Decimal(14, 2)
+  round         Int      @default(1)
+  createdBy     String   @default("AI") @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  negotiation   Negotiation @relation(fields: [negotiationId], references: [id])
+
+  @@index([negotiationId])
+  @@map("offers")
+}
+
+model Deal {
+  id            String     @id @default(uuid())
+  negotiationId String     @map("negotiation_id")
+  buyerId       String     @map("buyer_id")
+  sellerId      String     @map("seller_id")
+  lowerOfficeId String?    @map("lower_office_id")
+  finalPrice    Decimal    @db.Decimal(14, 2) @map("final_price")
+  status        DealStatus @default(PENDING)
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  negotiation   Negotiation @relation(fields: [negotiationId], references: [id])
+  buyer         User        @relation("BuyerDeals", fields: [buyerId], references: [id])
+  seller        User        @relation("SellerDeals", fields: [sellerId], references: [id])
+  lowerOffice   LowerOffice? @relation(fields: [lowerOfficeId], references: [id])
+  payments      Payment[]
+
+  @@index([negotiationId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([lowerOfficeId])
+  @@map("deals")
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  userId        String        @map("user_id")
+  dealId        String        @map("deal_id")
+  type          PaymentType
+  amount        Decimal       @db.Decimal(14, 2)
+  fee           Decimal       @db.Decimal(14, 2) @default(0)
+  provider      PaymentProvider
+  status        PaymentStatus @default(PENDING)
+  transactionId String?       @map("transaction_id")
+  externalId    String?       @map("external_id")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  user          User          @relation(fields: [userId], references: [id])
+  deal          Deal          @relation(fields: [dealId], references: [id])
+
+  @@index([userId])
+  @@index([dealId])
+  @@map("payments")
+}
+
+model AiLog {
+  id            String   @id @default(uuid())
+  negotiationId String?  @map("negotiation_id")
+  actionType    AiActionType @map("action_type")
+  message       String?  @db.Text
+  data          Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  negotiation   Negotiation? @relation(fields: [negotiationId], references: [id])
+
+  @@index([negotiationId])
+  @@map("ai_logs")
+}
+
+model Recommendation {
+  id         String               @id @default(uuid())
+  propertyId String               @map("property_id")
+  buyerId    String               @map("buyer_id")
+  score      Float                @default(0)
+  status     RecommendationStatus @default(UNSEEN)
+  createdAt  DateTime             @default(now()) @map("created_at")
+  updatedAt  DateTime             @updatedAt @map("updated_at")
+
+  property   Property             @relation(fields: [propertyId], references: [id])
+  buyer      User                 @relation(fields: [buyerId], references: [id])
+
+  @@unique([propertyId, buyerId])
+  @@index([buyerId, status])
+  @@index([propertyId])
+  @@map("recommendations")
+}
+
+// ─── Intake Tables (MVP WhatsApp Flow) ──────────────────────────
+
+// ─── Onboarding Models (Phase 1 — Constitution v3.0) ───────────
+
+model PropertyDraft {
+  id          String         @id @default(uuid())
+  userId      String         @map("user_id")
+  propertyId  String?        @map("property_id")
+  currentStep OnboardingStep @default(PROPERTY_TYPE) @map("current_step")
+  data        Json           @default("{}")
+  isCompleted Boolean        @default(false) @map("is_completed")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  user        User           @relation(fields: [userId], references: [id])
+  property    Property?      @relation(fields: [propertyId], references: [id])
+  media       PropertyMedia[]
+
+  @@index([userId])
+  @@index([isCompleted])
+  @@map("property_drafts")
+}
+
+model PropertyMedia {
+  id         String        @id @default(uuid())
+  draftId    String?       @map("draft_id")
+  propertyId String?       @map("property_id")
+  url        String
+  type       MediaType
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  draft      PropertyDraft? @relation(fields: [draftId], references: [id])
+  property   Property?      @relation(fields: [propertyId], references: [id])
+
+  @@index([draftId])
+  @@index([propertyId])
+  @@map("property_media")
+}
+
+// ─── Location Reference Data ────────────────────────────────────
+
+model Location {
+  id        Int            @id @default(autoincrement())
+  nameAr    String         @map("name_ar") @db.VarChar(100)
+  nameEn    String?        @map("name_en") @db.VarChar(100)
+  type      LocationType
+  parentId  Int?           @map("parent_id")
+  sortOrder Int            @default(0) @map("sort_order")
+  isActive  Boolean        @default(true) @map("is_active")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  parent    Location?      @relation("LocationHierarchy", fields: [parentId], references: [id])
+  children  Location[]     @relation("LocationHierarchy")
+
+  @@index([type, parentId])
+  @@index([parentId, isActive])
+  @@map("locations")
+}
+
+// ─── Auth ─────────────────────────────────────────────────────
+
+model OtpCode {
+  id        String    @id @default(uuid())
+  phone     String
+  code      String
+  attempts  Int       @default(0)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([phone, createdAt])
+  @@map("otp_codes")
+}
+
+// ─── Intake Tables (Legacy MVP WhatsApp Flow) ───────────────────
+
+model Conversation {
+  id           String    @id @default(uuid())
+  whatsappId   String    @unique @map("whatsapp_id")
+  userId       String?   @map("user_id")
+  flowState    FlowState @default(AWAITING_INTENT) @map("flow_state")
+  currentField String?   @map("current_field")
+  intent       Intent?
+  listingId    String?   @map("listing_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  expiresAt    DateTime? @map("expires_at")
+
+  user         User?     @relation(fields: [userId], references: [id])
+  listing      Listing?  @relation(fields: [listingId], references: [id])
+
+  @@index([whatsappId])
+  @@index([expiresAt])
+  @@map("conversations")
+}
+
+model Listing {
+  id          String        @id @default(uuid())
+  whatsappId  String        @map("whatsapp_id")
+  userId      String?       @map("user_id")
+  intent      Intent?
+  unitType    UnitType?     @map("unit_type")
+  specs       Json?
+  location    String?
+  price       Decimal?      @db.Decimal(14, 2)
+  mediaUrls   Json?         @map("media_urls")
+  status      ListingStatus @default(DRAFT)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  user          User?          @relation(fields: [userId], references: [id])
+  conversations Conversation[]
+  units         Unit[]
+
+  @@index([whatsappId])
+  @@index([status])
+  @@map("listings")
+}
+
+model Unit {
+  id         String   @id @default(uuid())
+  listingId  String   @map("listing_id")
+  whatsappId String   @map("whatsapp_id")
+  intent     Intent
+  unitType   UnitType @map("unit_type")
+  specs      Json?
+  location   String?
+  price      Decimal? @db.Decimal(14, 2)
+  mediaUrls  Json?    @map("media_urls")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  listing    Listing  @relation(fields: [listingId], references: [id])
+
+  @@index([listingId])
+  @@index([isActive, intent, unitType])
+  @@index([whatsappId])
+  @@map("units")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+enum UserType {
+  ADMIN
+  USER
+}
+
+enum PropertyType {
+  SALE
+  RENT
+}
+
+enum PropertyStatus {
+  ACTIVE
+  INACTIVE
+  SOLD
+  RENTED
+}
+
+enum OfficeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum NegotiationStatus {
+  ACTIVE
+  AGREED
+  FAILED
+}
+
+enum DealStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentType {
+  DEPOSIT
+  COMMISSION
+  INSURANCE
+}
+
+enum PaymentProvider {
+  MOCK
+  PAYMOB
+  FAWRY
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum AiActionType {
+  ASK
+  COUNTER
+  ACCEPT
+  REJECT
+}
+
+enum FlowState {
+  AWAITING_INTENT
+  AWAITING_UNIT_TYPE
+  AWAITING_SPECS
+  AWAITING_MEDIA
+  AWAITING_CONFIRMATION
+  CONFIRMED
+}
+
+enum Intent {
+  BUY
+  SELL
+  RENT
+  LEASE
+}
+
+enum UnitType {
+  APARTMENT
+  LAND
+  VILLA
+  COMMERCIAL
+}
+
+enum ListingStatus {
+  DRAFT
+  CONFIRMED
+}
+
+enum RecommendationStatus {
+  UNSEEN
+  SEEN
+  DISMISSED
+  NEGOTIATED
+}
+
+// ─── Phase 1 & 2 Enums (Constitution v3.0) ─────────────────────
+
+enum PropertyKind {
+  APARTMENT
+  VILLA
+  SHOP
+  OFFICE
+  SUMMER_RESORT
+  COMMERCIAL
+  LAND_BUILDING
+}
+
+enum OnboardingStep {
+  PROPERTY_TYPE
+  LISTING_TYPE
+  GOVERNORATE
+  CITY
+  DISTRICT
+  DETAILS
+  PRICE
+  MEDIA
+  REVIEW
+  COMPLETED
+}
+
+enum LocationType {
+  GOVERNORATE
+  CITY
+  DISTRICT
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}

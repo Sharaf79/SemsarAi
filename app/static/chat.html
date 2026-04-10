@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سمسار AI — Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0b141a;
+            color: #e9edef;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ─────────────────────────────── */
+        .header {
+            background: #202c33;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid #2a3942;
+        }
+        .header .avatar {
+            width: 42px; height: 42px;
+            border-radius: 50%;
+            background: #00a884;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; font-weight: bold; color: #fff;
+        }
+        .header .info { flex: 1; }
+        .header .info h2 { font-size: 16px; font-weight: 600; }
+        .header .info small { color: #8696a0; font-size: 12px; }
+        .header .reset-btn {
+            background: transparent;
+            border: 1.5px solid #8696a0;
+            border-radius: 8px;
+            color: #8696a0;
+            padding: 6px 14px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .header .reset-btn:hover { border-color: #ef4444; color: #ef4444; }
+
+        /* ── Chat area ──────────────────────────── */
+        .chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 60px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            background: #0b141a;
+        }
+
+        .msg {
+            max-width: 65%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14.5px;
+            line-height: 1.55;
+            position: relative;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .msg .time {
+            font-size: 11px;
+            color: #ffffff99;
+            float: left;
+            margin-top: 4px;
+            margin-right: 8px;
+        }
+        .msg.bot {
+            background: #202c33;
+            align-self: flex-start;
+            border-top-right-radius: 0;
+        }
+        .msg.user {
+            background: #005c4b;
+            align-self: flex-end;
+            border-top-left-radius: 0;
+        }
+        .msg.system {
+            align-self: center;
+            background: #182229;
+            color: #8696a0;
+            font-size: 12px;
+            border-radius: 6px;
+            padding: 6px 14px;
+            max-width: 80%;
+            text-align: center;
+        }
+
+        /* ── Review card ────────────────────────── */
+        .review-card {
+            align-self: flex-start;
+            background: #202c33;
+            border-radius: 8px;
+            padding: 14px 16px;
+            max-width: 75%;
+            border-top-right-radius: 0;
+        }
+        .review-card h3 {
+            color: #00a884;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .review-card .review-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid #2a3942;
+            gap: 12px;
+        }
+        .review-card .review-row:last-of-type { border-bottom: none; }
+        .review-card .review-label { color: #8696a0; font-size: 13px; white-space: nowrap; }
+        .review-card .review-value { color: #e9edef; font-size: 13.5px; font-weight: 500; text-align: left; }
+        .review-card .review-actions {
+            display: flex; gap: 8px; margin-top: 12px;
+        }
+        .review-card .btn-submit {
+            flex: 1;
+            background: #00a884;
+            border: none;
+            border-radius: 8px;
+            padding: 11px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .review-card .btn-submit:hover { background: #06cf9c; }
+        .review-card .btn-submit:disabled { background: #2a3942; cursor: default; }
+
+        /* ── Typing indicator ───────────────────── */
+        .typing { display: none; align-self: flex-start; padding: 10px 16px; }
+        .typing.visible { display: flex; gap: 4px; }
+        .typing span {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #8696a0;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing span:nth-child(2) { animation-delay: 0.16s; }
+        .typing span:nth-child(3) { animation-delay: 0.32s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* ── Input bar ──────────────────────────── */
+        .input-bar {
+            background: #202c33;
+            padding: 10px 16px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .input-bar input {
+            flex: 1;
+            background: #2a3942;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #e9edef;
+            font-size: 15px;
+            outline: none;
+            direction: rtl;
+        }
+        .input-bar input::placeholder { color: #8696a0; }
+        .input-bar button {
+            background: #00a884;
+            border: none;
+            border-radius: 50%;
+            width: 42px; height: 42px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+        }
+        .input-bar button:hover { background: #06cf9c; }
+        .input-bar button:disabled { background: #2a3942; cursor: default; }
+        .input-bar button svg { fill: #e9edef; }
+
+        /* ── Quick-reply option buttons ─────────── */
+        .options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 6px;
+            align-self: flex-start;
+            max-width: 75%;
+        }
+        .options button {
+            background: transparent;
+            border: 1.5px solid #00a884;
+            border-radius: 18px;
+            color: #00a884;
+            padding: 6px 16px;
+            font-size: 13.5px;
+            cursor: pointer;
+            transition: all 0.18s;
+            direction: rtl;
+        }
+        .options button:hover {
+            background: #00a884;
+            color: #fff;
+        }
+
+        /* ── Form area ──────────────────────────── */
+        .form-area {
+            background: #202c33;
+            padding: 14px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-top: 1px solid #2a3942;
+        }
+        .form-area .form-title {
+            color: #00a884;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        .form-area .field-row {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .form-area label {
+            color: #8696a0;
+            font-size: 12px;
+        }
+        .form-area label .req { color: #ef4444; }
+        .form-area input {
+            background: #2a3942;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 9px 12px;
+            color: #e9edef;
+            font-size: 14px;
+            outline: none;
+            direction: rtl;
+            transition: border-color 0.2s;
+        }
+        .form-area input:focus { border-color: #00a884; }
+        .form-area .form-submit {
+            background: #00a884;
+            border: none;
+            border-radius: 8px;
+            padding: 11px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 6px;
+            transition: background 0.2s;
+        }
+        .form-area .form-submit:hover { background: #06cf9c; }
+        .form-area .form-submit:disabled { background: #2a3942; cursor: default; }
+
+        /* ── Number bar ─────────────────────────── */
+        .number-bar {
+            background: #202c33;
+            padding: 10px 16px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid #2a3942;
+        }
+        .number-bar input {
+            flex: 1;
+            background: #2a3942;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #e9edef;
+            font-size: 17px;
+            font-weight: 600;
+            outline: none;
+            direction: ltr;
+            text-align: right;
+            transition: border-color 0.2s;
+            -moz-appearance: textfield;
+        }
+        .number-bar input::-webkit-inner-spin-button,
+        .number-bar input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .number-bar input:focus { border-color: #00a884; }
+        .number-bar .number-unit {
+            color: #8696a0;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .number-bar button {
+            background: #00a884;
+            border: none;
+            border-radius: 50%;
+            width: 42px; height: 42px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .number-bar button:hover { background: #06cf9c; }
+        .number-bar button svg { fill: #e9edef; }
+
+        .locked-bar input { cursor: not-allowed; }
+
+        /* ── Completed banner ──────────────────── */
+        .completed-banner {
+            align-self: center;
+            background: linear-gradient(135deg, #00a884 0%, #06cf9c 100%);
+            border-radius: 12px;
+            padding: 20px 28px;
+            text-align: center;
+            margin: 12px 0;
+        }
+        .completed-banner .emoji { font-size: 40px; margin-bottom: 8px; }
+        .completed-banner .title { font-size: 18px; font-weight: 700; color: #fff; }
+        .completed-banner .sub { font-size: 13px; color: #ffffffcc; margin-top: 4px; }
+
+        /* ── Error toast ────────────────────────── */
+        .error-toast {
+            align-self: center;
+            background: #3b1c1c;
+            border: 1px solid #ef4444;
+            border-radius: 8px;
+            padding: 8px 16px;
+            color: #fca5a5;
+            font-size: 13px;
+            max-width: 80%;
+            text-align: center;
+            margin: 4px 0;
+        }
+
+        @media (max-width: 600px) {
+            .chat { padding: 12px 12px; }
+            .msg, .review-card, .options { max-width: 90%; }
+        }
+
+        /* ── Tab bar ─────────────────────────────── */
+        .tab-bar {
+            background: #1f2c34;
+            display: flex;
+            border-bottom: 1px solid #2a3942;
+        }
+        .tab-bar button {
+            flex: 1;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #8696a0;
+            padding: 12px;
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-bar button.active {
+            color: #00a884;
+            border-bottom-color: #00a884;
+        }
+
+        /* ── Negotiation setup panel ─────────────── */
+        .neg-setup {
+            background: #202c33;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-bottom: 1px solid #2a3942;
+        }
+        .neg-setup label { color: #8696a0; font-size: 12px; }
+        .neg-setup input {
+            background: #2a3942;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 9px 12px;
+            color: #e9edef;
+            font-size: 14px;
+            outline: none;
+            direction: ltr;
+            transition: border-color 0.2s;
+        }
+        .neg-setup input:focus { border-color: #00a884; }
+        .neg-setup button {
+            background: #00a884;
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .neg-setup button:hover { background: #06cf9c; }
+        .neg-setup button:disabled { background: #2a3942; cursor: default; }
+
+        /* ── Negotiation action bar ───────────────── */
+        .neg-actions {
+            background: #202c33;
+            padding: 10px 16px;
+            display: flex;
+            gap: 8px;
+            border-top: 1px solid #2a3942;
+        }
+        .neg-actions button {
+            flex: 1;
+            border: none;
+            border-radius: 8px;
+            padding: 11px 6px;
+            font-size: 14px;
+            font-family: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .neg-actions button:disabled { opacity: 0.5; cursor: default; }
+        .neg-btn-accept { background: #00a884; color: #fff; }
+        .neg-btn-reject { background: #ef4444; color: #fff; }
+        .neg-btn-counter { background: #2a3942; color: #e9edef; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="avatar">س</div>
+        <div class="info">
+            <h2>سمسار AI</h2>
+            <small id="status-text">جاري التحميل…</small>
+        </div>
+        <button class="reset-btn" onclick="resetAndRestart()">بداية جديدة 🔄</button>
+    </div>
+
+    <!-- Mode tabs -->
+    <div class="tab-bar">
+        <button id="tab-onboarding" class="active" onclick="switchTab('onboarding')">تسجيل عقار 🏠</button>
+        <button id="tab-negotiation" onclick="switchTab('negotiation')">تفاوض 🤝</button>
+    </div>
+
+    <!-- Negotiation: setup panel (hidden until negotiation tab activated) -->
+    <div class="neg-setup" id="neg-setup" style="display:none;">
+        <label>معرف التفاوض (Negotiation ID)</label>
+        <input type="text" id="neg-id-input" placeholder="e.g. clxyz123abc...">
+        <button id="neg-start-btn" onclick="startNegotiation()">ابدأ التفاوض 🤝</button>
+    </div>
+
+    <!-- Chat area -->
+    <div class="chat" id="chat"></div>
+
+    <!-- Typing indicator -->
+    <div class="typing" id="typing"><span></span><span></span><span></span></div>
+
+    <!-- Form area for multi-field inputs (DETAILS) -->
+    <div class="form-area" id="form-area" style="display:none;"></div>
+
+    <!-- Number input bar (price) -->
+    <div class="number-bar" id="number-bar" style="display:none;">
+        <input type="number" id="number-input" inputmode="numeric" placeholder="أدخل الرقم…"
+               onkeydown="if(event.key==='Enter') sendNumber()">
+        <span class="number-unit">ج.م</span>
+        <button id="number-btn" onclick="sendNumber()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Free-text input bar (file/fallback) -->
+    <div class="input-bar" id="input-bar" style="display:none;">
+        <input type="text" id="input" placeholder="اكتب رسالتك هنا…"
+               onkeydown="if(event.key==='Enter') send()">
+        <button id="send-btn" onclick="send()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- File upload bar (for MEDIA step) -->
+    <div class="input-bar" id="file-bar" style="display:none; justify-content: space-between;">
+        <input type="file" id="file-input" accept="image/*,video/*" multiple style="display: none;">
+        <button id="browse-btn" onclick="document.getElementById('file-input').click()" style="width: auto; padding: 0 16px; border-radius: 8px; font-size: 14px; font-weight: bold;">
+            🖼️ اختر صور / فيديوهات
+        </button>
+        <button id="skip-btn" onclick="sendSkipMedia()" style="background: transparent; border: 1.5px solid #8696a0; color: #8696a0; width: auto; padding: 0 16px; border-radius: 8px; font-size: 14px;">
+            تخطي
+        </button>
+    </div>
+
+    <!-- Locked bar shown when structured input is required -->
+    <div class="input-bar locked-bar" id="locked-bar">
+        <input type="text" disabled placeholder="اختر من الأزرار أعلاه ☝️">
+        <button disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Negotiation: action buttons (hidden until negotiation started) -->
+    <div class="neg-actions" id="neg-actions" style="display:none;">
+        <button class="neg-btn-accept" onclick="sendNegotiationMessage('موافق')">موافق ✅</button>
+        <button class="neg-btn-reject" onclick="sendNegotiationMessage('لا')">لا ❌</button>
+        <button class="neg-btn-counter" onclick="showCounterInput()">عايز عرض تاني 💬</button>
+    </div>
+
+    <script>
+    // ── DOM Elements ─────────────────────────────────────────────
+    const chatEl    = document.getElementById('chat');
+    const inputBar  = document.getElementById('input-bar');
+    const inputEl   = document.getElementById('input');
+    const typingEl  = document.getElementById('typing');
+    const statusEl  = document.getElementById('status-text');
+    const formArea  = document.getElementById('form-area');
+    const numberBar = document.getElementById('number-bar');
+    const numberInp = document.getElementById('number-input');
+    const lockedBar = document.getElementById('locked-bar');
+    const fileBar   = document.getElementById('file-bar');
+    const fileInput = document.getElementById('file-input');
+    const negSetup  = document.getElementById('neg-setup');
+    const negActions= document.getElementById('neg-actions');
+    const negIdInput= document.getElementById('neg-id-input');
+    const negStartBtn=document.getElementById('neg-start-btn');
+
+    // ── Session ──────────────────────────────────────────────────
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+    }
+
+    function getUserId() {
+        let uid = localStorage.getItem('semsar_userId');
+        if (!uid) {
+            uid = generateUUID();
+            localStorage.setItem('semsar_userId', uid);
+        }
+        return uid;
+    }
+
+    const USERID = getUserId();
+    let currentStep = null;
+    let currentInputType = null;
+    let flowCompleted = false;
+
+    // ── Negotiation state ────────────────────────────────────────
+    let currentMode = 'onboarding';
+    let negotiationId = null;
+    let negotiationStarted = false;
+
+    // ── Step label map (for review display) ──────────────────────
+    const STEP_LABELS = {
+        property_type: 'نوع العقار',
+        listing_type: 'نوع الإعلان',
+        governorate_name: 'المحافظة',
+        city_name: 'المدينة',
+        district_name: 'الحي / المنطقة',
+        price: 'السعر',
+    };
+    const DETAIL_LABELS = {
+        area_m2: 'المساحة (م²)',
+        bedrooms: 'عدد الغرف',
+        bathrooms: 'عدد الحمامات',
+    };
+    const TYPE_DISPLAY = {
+        APARTMENT: 'شقة', VILLA: 'فيلا', SHOP: 'محل', OFFICE: 'مكتب',
+        SALE: 'بيع', RENT: 'إيجار',
+    };
+
+    // ── Helpers ──────────────────────────────────────────────────
+    function timeStr() {
+        return new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addMsg(text, who) {
+        const div = document.createElement('div');
+        div.className = 'msg ' + who;
+        div.innerHTML = text.replace(/\n/g, '<br>') + `<span class="time">${timeStr()}</span>`;
+        chatEl.appendChild(div);
+        chatEl.scrollTop = chatEl.scrollHeight;
+        return div;
+    }
+
+    function addSystem(text) {
+        const div = document.createElement('div');
+        div.className = 'msg system';
+        div.textContent = text;
+        chatEl.appendChild(div);
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function addError(text) {
+        const div = document.createElement('div');
+        div.className = 'error-toast';
+        div.textContent = '⚠️ ' + text;
+        chatEl.appendChild(div);
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function setTyping(visible) {
+        typingEl.classList.toggle('visible', visible);
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    // ── Input Management ─────────────────────────────────────────
+    function hideAllInputs() {
+        document.querySelectorAll('.options').forEach(el => el.remove());
+        formArea.style.display = 'none';
+        formArea.innerHTML = '';
+        numberBar.style.display = 'none';
+        numberInp.value = '';
+        inputBar.style.display = 'none';
+        inputEl.value = '';
+        fileBar.style.display = 'none';
+        fileInput.value = '';
+        lockedBar.style.display = 'flex';
+        currentInputType = null;
+    }
+
+    function activateInput(type) {
+        hideAllInputs();
+        currentInputType = type;
+        if (type === 'multi-choice') {
+            lockedBar.style.display = 'flex';
+            lockedBar.querySelector('input').placeholder = 'اختر من الأزرار أعلاه ☝️';
+        } else if (type === 'form') {
+            lockedBar.style.display = 'none';
+        } else if (type === 'number') {
+            lockedBar.style.display = 'none';
+            numberBar.style.display = 'flex';
+            numberInp.value = '';
+            numberInp.focus();
+        } else if (type === 'text') {
+            lockedBar.style.display = 'none';
+            inputBar.style.display = 'flex';
+            inputEl.focus();
+        } else if (type === 'file') {
+            lockedBar.style.display = 'none';
+            fileBar.style.display = 'flex';
+        } else if (type === 'review' || type === 'completed') {
+            lockedBar.style.display = 'none';
+            inputBar.style.display = 'none';
+            numberBar.style.display = 'none';
+        }
+    }
+
+    // ── Option Buttons ───────────────────────────────────────────
+    function addOptions(options) {
+        if (!options || options.length === 0) return;
+        const row = document.createElement('div');
+        row.className = 'options';
+        options.forEach(opt => {
+            const btn = document.createElement('button');
+            const isObject = typeof opt === 'object' && opt !== null && opt.label;
+            const displayText = isObject ? opt.label : opt;
+            const answerValue = isObject ? opt : opt;
+
+            btn.textContent = displayText;
+            btn.onclick = () => {
+                row.querySelectorAll('button').forEach(b => {
+                    b.disabled = true;
+                    b.style.opacity = '0.5';
+                });
+                btn.style.opacity = '1';
+                btn.style.background = '#00a884';
+                btn.style.color = '#fff';
+                hideAllInputs();
+                addMsg(displayText, 'user');
+                submitAnswer(answerValue);
+            };
+            row.appendChild(btn);
+        });
+        chatEl.appendChild(row);
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    // ── Form (DETAILS step) ──────────────────────────────────────
+    function showForm(fields) {
+        formArea.innerHTML = '';
+
+        const title = document.createElement('div');
+        title.className = 'form-title';
+        title.textContent = '📝 املأ البيانات التالية:';
+        formArea.appendChild(title);
+
+        fields.forEach(f => {
+            const row = document.createElement('div');
+            row.className = 'field-row';
+            const lbl = document.createElement('label');
+            lbl.innerHTML = f.label + (f.required ? ' <span class="req">*</span>' : '');
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.inputMode = 'numeric';
+            inp.dataset.name = f.name;
+            inp.dataset.required = f.required ? '1' : '0';
+            inp.placeholder = f.label;
+            inp.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const all = [...formArea.querySelectorAll('input')];
+                    const idx = all.indexOf(inp);
+                    if (idx < all.length - 1) all[idx + 1].focus();
+                    else formArea.querySelector('.form-submit')?.click();
+                }
+            });
+            row.appendChild(lbl);
+            row.appendChild(inp);
+            formArea.appendChild(row);
+        });
+
+        const btn = document.createElement('button');
+        btn.className = 'form-submit';
+        btn.textContent = 'تأكيد ✓';
+        btn.onclick = () => {
+            const inputs = formArea.querySelectorAll('input');
+            const answer = {};
+            let valid = true;
+            inputs.forEach(inp => {
+                const val = inp.value.trim();
+                if (inp.dataset.required === '1' && !val) {
+                    inp.style.borderColor = '#ef4444';
+                    valid = false;
+                } else {
+                    inp.style.borderColor = 'transparent';
+                }
+                if (val) answer[inp.dataset.name] = Number(val);
+            });
+            if (!valid) return;
+
+            const summary = Object.entries(answer)
+                .map(([k, v]) => `${DETAIL_LABELS[k] || k}: ${v}`)
+                .join('، ');
+            btn.disabled = true;
+            hideAllInputs();
+            addMsg(summary, 'user');
+            submitAnswer(answer);
+        };
+        formArea.appendChild(btn);
+        formArea.style.display = 'flex';
+        formArea.querySelector('input')?.focus();
+    }
+
+    // ── Review Card ──────────────────────────────────────────────
+    async function showReview() {
+        activateInput('review');
+        setTyping(true);
+
+        try {
+            const res = await fetch(`/onboarding/review?userId=${USERID}`);
+            const data = await res.json();
+            setTyping(false);
+
+            if (!res.ok) {
+                addError(data.message || 'خطأ في تحميل المراجعة');
+                return;
+            }
+
+            // Unwrap envelope: data = { success, data: { draft, data: {...}, isComplete, missingFields } }
+            const reviewWrapper = data.data || {};
+            const reviewData = reviewWrapper.data || {};
+            const card = document.createElement('div');
+            card.className = 'review-card';
+
+            const h3 = document.createElement('h3');
+            h3.textContent = '📋 مراجعة بياناتك';
+            card.appendChild(h3);
+
+            // Render each field
+            for (const [key, label] of Object.entries(STEP_LABELS)) {
+                const val = reviewData[key];
+                if (val === undefined || val === null) continue;
+                const displayVal = TYPE_DISPLAY[val] || val;
+                const row = document.createElement('div');
+                row.className = 'review-row';
+                row.innerHTML = `
+                    <span class="review-label">${label}</span>
+                    <span class="review-value">${key === 'price' ? Number(displayVal).toLocaleString('en') + ' ج.م' : displayVal}</span>
+                `;
+                card.appendChild(row);
+            }
+
+            // Details sub-fields
+            const details = reviewData.details;
+            if (details && typeof details === 'object') {
+                for (const [key, label] of Object.entries(DETAIL_LABELS)) {
+                    const val = details[key];
+                    if (val === undefined || val === null) continue;
+                    const row = document.createElement('div');
+                    row.className = 'review-row';
+                    row.innerHTML = `
+                        <span class="review-label">${label}</span>
+                        <span class="review-value">${val}</span>
+                    `;
+                    card.appendChild(row);
+                }
+            }
+
+            // Missing fields warning
+            if (reviewWrapper.missingFields && reviewWrapper.missingFields.length > 0) {
+                const warn = document.createElement('div');
+                warn.style.cssText = 'color: #fbbf24; font-size: 12px; margin-top: 8px;';
+                warn.textContent = '⚠️ بيانات ناقصة: ' + reviewWrapper.missingFields.join(', ');
+                card.appendChild(warn);
+            }
+
+            // Action buttons
+            const actions = document.createElement('div');
+            actions.className = 'review-actions';
+
+            const submitBtn = document.createElement('button');
+            submitBtn.className = 'btn-submit';
+            submitBtn.textContent = 'تأكيد وإرسال ✅';
+            submitBtn.onclick = () => {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'جاري الإرسال…';
+                doFinalSubmit();
+            };
+            actions.appendChild(submitBtn);
+            card.appendChild(actions);
+
+            chatEl.appendChild(card);
+            chatEl.scrollTop = chatEl.scrollHeight;
+
+        } catch (e) {
+            setTyping(false);
+            addError('فشل في تحميل المراجعة — تأكد من الاتصال');
+        }
+    }
+
+    // ── Final Submit ─────────────────────────────────────────────
+    async function doFinalSubmit() {
+        setTyping(true);
+        try {
+            const res = await fetch('/onboarding/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: USERID }),
+            });
+            const data = await res.json();
+            setTyping(false);
+
+            if (!res.ok) {
+                addError(data.message || 'خطأ في الإرسال');
+                return;
+            }
+
+            showCompleted(data);
+
+        } catch (e) {
+            setTyping(false);
+            addError('خطأ في الاتصال');
+        }
+    }
+
+    // ── Completed Screen ─────────────────────────────────────────
+    function showCompleted(property) {
+        flowCompleted = true;
+        activateInput('completed');
+        hideAllInputs();
+        lockedBar.style.display = 'none';
+        statusEl.textContent = 'اكتمل ✅';
+
+        const banner = document.createElement('div');
+        banner.className = 'completed-banner';
+        banner.innerHTML = `
+            <div class="emoji">🎉</div>
+            <div class="title">تم تسجيل عقارك بنجاح!</div>
+            <div class="sub">سيتم نشر الإعلان وبدء البحث عن مشترين</div>
+        `;
+        chatEl.appendChild(banner);
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    // ── Show Question (main router) ──────────────────────────────
+    function showQuestion(q) {
+        if (!q || !q.question) {
+            showCompleted({});
+            return;
+        }
+
+        currentStep = q.step;
+        statusEl.textContent = `الخطوة: ${q.step}`;
+
+        // REVIEW step → show review card instead of plain question
+        if (q.step === 'REVIEW') {
+            addMsg(q.question, 'bot');
+            showReview();
+            return;
+        }
+
+        addMsg(q.question, 'bot');
+
+        if (q.inputType === 'multi-choice' && q.options) {
+            activateInput('multi-choice');
+            addOptions(q.options);
+        } else if (q.inputType === 'form' && q.fields) {
+            activateInput('form');
+            showForm(q.fields);
+        } else if (q.inputType === 'number') {
+            activateInput('number');
+        } else if (q.inputType === 'file') {
+            activateInput('file');
+        } else {
+            activateInput('text');
+        }
+    }
+
+    // ── API: Start Onboarding ────────────────────────────────────
+    async function startOnboarding() {
+        setTyping(true);
+        statusEl.textContent = 'جاري الاتصال…';
+
+        try {
+            // 1. Ensure user exists in NestJS DB
+            await fetch('/api/ensure-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: USERID }),
+            });
+
+            // 2. Start or resume onboarding
+            const res = await fetch('/onboarding/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: USERID }),
+            });
+            const data = await res.json();
+            setTyping(false);
+
+            if (!res.ok) {
+                statusEl.textContent = 'خطأ';
+                addError(data.message || `خطأ ${res.status}`);
+                return;
+            }
+
+            statusEl.textContent = 'متصل';
+
+            // Unwrap { success, data: { draft, question } } envelope
+            const payload = data.data || {};
+
+            // Check if draft is already COMPLETED
+            if (payload.draft && payload.draft.currentStep === 'COMPLETED') {
+                addSystem('لديك تسجيل مكتمل سابقاً');
+                showCompleted({});
+                return;
+            }
+
+            if (payload.question) {
+                addSystem('أهلاً بك في سمسار AI! 🏠 يلّا نسجل عقارك');
+                showQuestion(payload.question);
+            } else {
+                addError('لم يتم استلام سؤال من الخادم');
+            }
+
+        } catch (e) {
+            setTyping(false);
+            statusEl.textContent = 'غير متصل';
+            addError('لا يوجد اتصال — تأكد أن NestJS شغال على localhost:3000');
+        }
+    }
+
+    // ── API: Submit Answer ───────────────────────────────────────
+    async function submitAnswer(answer) {
+        setTyping(true);
+        try {
+            const res = await fetch('/onboarding/answer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: USERID, step: currentStep, answer }),
+            });
+            const data = await res.json();
+            setTyping(false);
+
+            if (!res.ok) {
+                addError(data.message || `خطأ ${res.status}`);
+                // Re-fetch current question to let user retry
+                const retry = await fetch(`/onboarding/question?userId=${USERID}`);
+                if (retry.ok) {
+                    const q = await retry.json();
+                    if (q.data?.step) showQuestion(q.data);
+                }
+                return;
+            }
+
+            // Unwrap { success, data: { draft, question } } envelope
+            const payload = data.data || {};
+            if (payload.question) {
+                showQuestion(payload.question);
+            } else if (payload.draft?.currentStep === 'COMPLETED') {
+                showCompleted({});
+            } else {
+                addSystem('✅ تم!');
+            }
+
+        } catch (e) {
+            setTyping(false);
+            addError('خطأ في الاتصال');
+        }
+    }
+
+    // ── Input Senders ────────────────────────────────────────────
+    if (fileInput) {
+        fileInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+            
+            hideAllInputs();
+            addMsg(`تم اختيار ${files.length} ملفات... جاري الرفع ⏳`, 'user');
+            setTyping(true);
+
+            for (const file of files) {
+                // Mock file upload processing step
+                const isVideo = file.type.startsWith('video');
+                const mockUrl = `https://mock.semsar-ai.local/${encodeURIComponent(file.name)}_${Date.now()}`;
+                
+                try {
+                    await fetch('/onboarding/upload-media', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: USERID,
+                            url: mockUrl,
+                            type: isVideo ? 'VIDEO' : 'IMAGE'
+                        })
+                    });
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            
+            // Move to the next step
+            submitAnswer("skip");
+        });
+    }
+
+    function sendSkipMedia() {
+        hideAllInputs();
+        addMsg('تخطي رفع الصور', 'user');
+        submitAnswer("skip");
+    }
+
+    function send() {
+        const text = inputEl.value.trim();
+        if (!text) return;
+        // In counter-offer mode, route to negotiation
+        if (inputEl.dataset.negMode === '1') {
+            inputEl.value = '';
+            inputEl.dataset.negMode = '';
+            hideAllInputs();
+            negActions.style.display = 'flex';
+            sendNegotiationMessage(text);
+            return;
+        }
+        hideAllInputs();
+        addMsg(text, 'user');
+        inputEl.value = '';
+        // For MEDIA step, "تخطي" or "skip" sends null
+        if (currentStep === 'MEDIA' && (text === 'تخطي' || text.toLowerCase() === 'skip')) {
+            submitAnswer(null);
+        } else {
+            submitAnswer(text);
+        }
+    }
+
+    function sendNumber() {
+        const val = numberInp.value.trim();
+        if (!val || isNaN(Number(val)) || Number(val) <= 0) {
+            numberInp.style.borderColor = '#ef4444';
+            return;
+        }
+        const num = Number(val);
+        const formatted = num.toLocaleString('en') + ' ج.م';
+        hideAllInputs();
+        addMsg(formatted, 'user');
+        submitAnswer(num); // Send as number, not string
+    }
+
+    // ── Reset ────────────────────────────────────────────────────
+    function resetAndRestart() {
+        if (currentMode === 'negotiation') {
+            // Reset negotiation state
+            negotiationId = null;
+            negotiationStarted = false;
+            chatEl.innerHTML = '';
+            hideAllInputs();
+            negActions.style.display = 'none';
+            negSetup.style.display = 'flex';
+            negIdInput.value = '';
+            negStartBtn.disabled = false;
+            negStartBtn.textContent = 'ابدأ التفاوض 🤝';
+            statusEl.textContent = 'أدخل معرف التفاوض';
+            return;
+        }
+        localStorage.removeItem('semsar_userId');
+        location.reload();
+    }
+
+    // ── Negotiation ──────────────────────────────────────────────
+    function switchTab(mode) {
+        currentMode = mode;
+        document.getElementById('tab-onboarding').classList.toggle('active', mode === 'onboarding');
+        document.getElementById('tab-negotiation').classList.toggle('active', mode === 'negotiation');
+
+        if (mode === 'onboarding') {
+            negSetup.style.display = 'none';
+            negActions.style.display = 'none';
+            // Restore onboarding input state
+            if (!flowCompleted) activateInput(currentInputType || 'multi-choice');
+            statusEl.textContent = currentStep ? `الخطوة: ${currentStep}` : 'تسجيل عقار';
+        } else {
+            hideAllInputs();
+            negSetup.style.display = negotiationStarted ? 'none' : 'flex';
+            negActions.style.display = negotiationStarted ? 'flex' : 'none';
+            statusEl.textContent = negotiationStarted ? 'جلسة تفاوض نشطة' : 'أدخل معرف التفاوض';
+        }
+    }
+
+    async function startNegotiation() {
+        const id = negIdInput.value.trim();
+        if (!id) {
+            negIdInput.style.borderColor = '#ef4444';
+            return;
+        }
+        negIdInput.style.borderColor = 'transparent';
+        negotiationId = id;
+        negStartBtn.disabled = true;
+        negStartBtn.textContent = 'جاري التحميل…';
+        addSystem(`بدء جلسة التفاوض 🤝`);
+        await sendNegotiationMessage('بدء التفاوض');
+        negotiationStarted = true;
+        negSetup.style.display = 'none';
+        negActions.style.display = 'flex';
+        statusEl.textContent = 'جلسة تفاوض نشطة';
+    }
+
+    async function sendNegotiationMessage(text) {
+        if (!negotiationId) return;
+        setNegActionsDisabled(true);
+        if (text !== 'بدء التفاوض') addMsg(text, 'user');
+        setTyping(true);
+
+        try {
+            const res = await fetch('/conversation/message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: USERID,
+                    flow: 'negotiation',
+                    entityId: negotiationId,
+                    message: text,
+                    channel: 'app',
+                }),
+            });
+            const data = await res.json();
+            setTyping(false);
+
+            if (!res.ok) {
+                addError(data.message || `خطأ ${res.status}: ${JSON.stringify(data)}`);
+                setNegActionsDisabled(false);
+                // Reset start button if negotiation hasn't started yet
+                if (!negotiationStarted) {
+                    negStartBtn.disabled = false;
+                    negStartBtn.textContent = 'ابدأ التفاوض 🤝';
+                }
+                return;
+            }
+
+            addMsg(data.message || JSON.stringify(data), 'bot');
+            setNegActionsDisabled(false);
+
+            // Detect terminal states
+            const action = (data.action || '').toLowerCase();
+            if (action === 'deal_closed' || action === 'rejected' || action === 'deal-closed') {
+                setNegActionsDisabled(true);
+                addSystem('🏁 انتهت جلسة التفاوض');
+            }
+        } catch (e) {
+            setTyping(false);
+            addError('خطأ في الاتصال — تأكد أن NestJS شغال على localhost:3000');
+            setNegActionsDisabled(false);
+            if (!negotiationStarted) {
+                negStartBtn.disabled = false;
+                negStartBtn.textContent = 'ابدأ التفاوض 🤝';
+            }
+        }
+    }
+
+    function setNegActionsDisabled(disabled) {
+        negActions.querySelectorAll('button').forEach(b => b.disabled = disabled);
+    }
+
+    function showCounterInput() {
+        hideAllInputs();
+        negActions.style.display = 'none';
+        inputEl.placeholder = 'اكتب عرضك أو ردك…';
+        inputEl.dataset.negMode = '1';
+        inputBar.style.display = 'flex';
+        inputEl.focus();
+    }
+
+    // ── Boot ─────────────────────────────────────────────────────
+    startOnboarding();
+    </script>
+</body>
+</html>
