@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import type { Property } from '../types/index';
+import { useNavigate } from 'react-router-dom';
 
 interface PropertyCardProps {
   property: Property;
   onContact: (property: Property) => void;
   onChat: (property: Property) => void;
+  isFavorited?: boolean;
+  onToggleFavorite?: (id: string) => void;
 }
 
 function formatPrice(price: string): string {
@@ -40,8 +43,9 @@ const PLACEHOLDER_IMAGES: Record<string, string> = {
   DEFAULT:   'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400&q=80',
 };
 
-export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onContact, onChat }) => {
+export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onContact, onChat, isFavorited, onToggleFavorite }) => {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const navigate = useNavigate();
 
   const isRent = property.type === 'RENT';
   const location = [property.governorate, property.city, property.district].filter(Boolean).join(' - ');
@@ -54,8 +58,9 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onContact,
     (PLACEHOLDER_IMAGES[property.propertyKind ?? ''] || PLACEHOLDER_IMAGES.DEFAULT);
 
   return (
-    <div className="property-card">
-      {/* ── Content (right-to-left: content left, image right) ── */}
+    <>
+      <div className="property-card" onClick={() => navigate(`/property/${property.id}`)} style={{ cursor: 'pointer' }}>
+        {/* ── Content (right-to-left: content left, image right) ── */}
       <div className="property-card__content">
         {/* Sale/Rent badge */}
         <div className="property-card__badges">
@@ -68,7 +73,23 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onContact,
         </div>
 
         {/* Title */}
-        <h3 className="property-card__title">{property.title}</h3>
+        <h3 className="property-card__title">{property.adTitle || property.title}</h3>
+
+        {/* Ad Description excerpt */}
+        {property.adDescription && (
+          <p style={{
+            fontSize: '13px',
+            color: '#666',
+            margin: '4px 0 6px',
+            lineHeight: '1.5',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}>
+            {property.adDescription}
+          </p>
+        )}
 
         {/* Price */}
         <div className="property-card__price">
@@ -106,17 +127,22 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onContact,
           </div>
         )}
 
-        {/* Actions */}
-        <div className="property-card__actions">
+        <div className="property-card__actions" onClick={(e) => e.stopPropagation()}>
           <button
             className="btn btn-primary btn-sm"
-            onClick={() => onContact(property)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onContact(property);
+            }}
           >
             📞 تواصل مع المالك
           </button>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => onChat(property)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChat(property);
+            }}
           >
             🤖 تحدث مع AI
           </button>
@@ -145,6 +171,19 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onContact,
         />
         <div className="property-card__image-overlay" />
         
+        {onToggleFavorite && (
+          <button
+            className="property-card__heart"
+            title={isFavorited ? 'إزالة من المفضّلة' : 'أضف للمفضّلة'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(property.id);
+            }}
+          >
+            {isFavorited ? '❤️' : '🤍'}
+          </button>
+        )}
+
         {realImages.length > 1 && (
           <div className="property-card__gallery-dots">
             {realImages.map((img, idx) => (
@@ -163,6 +202,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onContact,
         )}
       </div>
     </div>
+    </>
   );
 };
 

@@ -8,7 +8,7 @@ export type ChatOption = string | { id: string; label: string };
 export interface ChatResponseData {
   step?: string;
   question?: string;
-  inputType?: 'text' | 'number' | 'multi-choice' | 'file' | 'form' | 'display';
+  inputType?: 'text' | 'number' | 'multi-choice' | 'file' | 'form' | 'display' | 'map' | 'textarea' | 'optional-textarea';
   options?: ChatOption[];
   fields?: Array<{ name: string; label: string; required: boolean }>;
   /** Populated when the flow is `negotiation` */

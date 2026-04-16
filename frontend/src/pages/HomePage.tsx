@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { FiltersSidebar } from '../components/FiltersSidebar';
 import { PropertyGrid } from '../components/PropertyGrid';
@@ -12,7 +13,30 @@ export const HomePage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { openChat } = useChatContext();
   const [filters, setFilters] = useState<PropertyFilters>({ sort: 'newest' });
+  const [searchParams] = useSearchParams();
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
+
+  // Sync URL query params (set by chat search) into the filter state in real-time
+  useEffect(() => {
+    const type = searchParams.get('type') as PropertyFilters['propertyType'] | null;
+    const kind = searchParams.get('kind') as PropertyFilters['propertyKind'] | null;
+    const gov = searchParams.get('gov');
+    const city = searchParams.get('city');
+    const beds = searchParams.get('beds');
+    const maxPrice = searchParams.get('maxPrice');
+    const hasParams = type || kind || gov || city || beds || maxPrice;
+    if (hasParams) {
+      setFilters({
+        sort: 'newest',
+        ...(type ? { propertyType: type } : {}),
+        ...(kind ? { propertyKind: kind } : {}),
+        ...(gov ? { governorate: gov } : {}),
+        ...(city ? { city } : {}),
+        ...(beds ? { bedrooms: Number(beds) } : {}),
+        ...(maxPrice ? { maxPrice: Number(maxPrice) } : {}),
+      });
+    }
+  }, [searchParams]);
   const [isStartNegOpen, setStartNegOpen] = useState(false);
   const [pendingProperty, setPendingProperty] = useState<Property | null>(null);
 

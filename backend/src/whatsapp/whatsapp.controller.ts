@@ -1,7 +1,8 @@
 /**
  * WhatsApp webhook controller — ported from Python src/api/webhook.py
- * GET /webhook  → verification handshake
- * POST /webhook → receive messages, process in background
+ * GET /webhook        → verification handshake
+ * POST /webhook       → receive messages + delivery statuses
+ * GET /webhook/health → WhatsApp configuration health check
  */
 import {
   Controller,
@@ -20,6 +21,7 @@ import { WhatsAppOrchestratorService } from './whatsapp-orchestrator.service';
 @Controller('webhook')
 export class WhatsAppController {
   private readonly logger = new Logger(WhatsAppController.name);
+  private lastWebhookReceived: Date | null = null;
 
   constructor(
     private readonly whatsapp: WhatsAppService,
@@ -46,7 +48,18 @@ export class WhatsAppController {
   }
 
   /**
-   * POST /webhook — Receive WhatsApp messages.
+   * GET /webhook/health — WhatsApp configuration health check.
+   */
+  @Get('health')
+  health() {
+    return {
+      configured: this.whatsapp.isConfigured(),
+      lastWebhookReceived: this.lastWebhookReceived?.toISOString() ?? null,
+    };
+  }
+
+  /**
+   * POST /webhook — Receive WhatsApp messages + delivery statuses.
    * Always returns 200 to avoid retries from Meta.
    */
   @Post()
@@ -64,15 +77,24 @@ export class WhatsAppController {
 
     // Return 200 immediately, process in background
     res.sendStatus(HttpStatus.OK);
+    this.lastWebhookReceived = new Date();
 
     try {
       const payload = JSON.parse(body.toString()) as Record<string, unknown>;
-      const parsed = this.whatsapp.parseIncomingMessage(payload);
 
+      // ── 1. Handle incoming messages ───────────────────────
+      const parsed = this.whatsapp.parseIncomingMessage(payload);
       if (parsed && (parsed.body || parsed.mediaId)) {
-        // Fire-and-forget processing (no await blocking the response)
         this.orchestrator.processMessage(parsed).catch((err: unknown) => {
           this.logger.error(`Error processing message: ${err}`);
+        });
+      }
+
+      // ── 2. Handle delivery status updates ─────────────────
+      const statuses = this.whatsapp.parseDeliveryStatuses(payload);
+      if (statuses.length > 0) {
+        this.orchestrator.handleDeliveryStatuses(statuses).catch((err: unknown) => {
+          this.logger.error(`Error processing delivery statuses: ${err}`);
         });
       }
     } catch (e) {

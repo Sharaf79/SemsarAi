@@ -19,6 +19,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resendTimer, setResendTimer] = useState(0);
+  const [channel, setChannel] = useState<'whatsapp' | 'sms'>('whatsapp');
   const [token, setToken] = useState('');
   const [userId, setUserId] = useState('');
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -49,6 +50,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
     setError('');
     try {
       const res = await sendOtp(fullPhone);
+      setChannel(res.channel);
       setStep('otp');
       startResendTimer();
       // Dev mode: auto-fill OTP from backend response
@@ -57,8 +59,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
       }
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg ?? 'حدث خطأ. حاول مرة أخرى.');
+      const raw = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '';
+      // Map common backend error messages to user-friendly Arabic
+      const errorMap: Record<string, string> = {
+        'Rate limit exceeded': 'لقد تجاوزت الحد المسموح. حاول بعد قليل.',
+        'Failed to send OTP via WhatsApp': 'فشل إرسال الكود عبر واتساب. تأكد أن رقمك مسجل على واتساب.',
+        'Too many OTP requests': 'طلبات كثيرة جداً. انتظر قليلاً ثم حاول مرة أخرى.',
+      };
+      const matched = Object.entries(errorMap).find(([key]) => raw.includes(key));
+      setError(matched ? matched[1] : (raw || 'حدث خطأ. حاول مرة أخرى.'));
     } finally {
       setLoading(false);
     }
@@ -109,6 +118,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
           phone: fullPhone,
           name: res.name,
           email: res.email,
+          dateOfBirth: null,
+          sexType: null,
+          notes: null,
         });
         onSuccess?.();
         onClose();
@@ -136,6 +148,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
         phone: fullPhone,
         name: user.name,
         email: user.email,
+        dateOfBirth: user.dateOfBirth ?? null,
+        sexType: user.sexType ?? null,
+        notes: user.notes ?? null,
       });
       onSuccess?.();
       onClose();
@@ -200,11 +215,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
         {/* ── OTP step ── */}
         {step === 'otp' && (
           <>
-            <div className="modal__icon">🔐</div>
+            <div className="modal__icon">{channel === 'whatsapp' ? '📱' : '💬'}</div>
             <h2 className="modal__title">كود التحقق</h2>
             <p className="modal__sub">
-              أرسلنا كود التحقق على<br />
-              <strong>+20{phone}</strong>
+              {channel === 'whatsapp'
+                ? 'تم إرسال كود التحقق على واتساب'
+                : 'تم إرسال كود التحقق برسالة SMS'}
+              <br />
+              <strong dir="ltr">+20{phone}</strong>
             </p>
 
             <div className="modal__form">
@@ -239,7 +257,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
                   <span>يمكنك إعادة الإرسال بعد {resendTimer} ثانية</span>
                 ) : (
                   <>
-                    لم تستلم الكود؟{' '}
+                    لم تستلم الكود على واتساب؟{' '}
                     <button
                       onClick={() => {
                         setOtp(['', '', '', '', '', '']);

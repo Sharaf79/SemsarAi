@@ -22,6 +22,24 @@ export interface Property {
   bedrooms: number | null;
   bathrooms: number | null;
   areaM2: string | null;
+  
+  // -- Extended Apartment Fields --
+  apartmentType?: string | null;
+  ownershipType?: string | null;
+  amenities?: Record<string, boolean> | null;
+  floorLevel?: string | null;
+  isFurnished?: boolean | null;
+  readiness?: string | null;
+  deliveryDate?: string | null;
+  finishingType?: string | null;
+  paymentMethod?: string | null;
+  isNegotiable?: boolean;
+  rentRateType?: string | null;
+
+  // -- Advertisement Fields --
+  adTitle?: string | null;
+  adDescription?: string | null;
+
   governorate: string | null;
   city: string | null;
   district: string | null;
@@ -64,6 +82,9 @@ export interface User {
   phone: string;
   name: string;
   email: string | null;
+  dateOfBirth: string | null;
+  sexType: string | null;
+  notes: string | null;
 }
 
 export interface AuthState {

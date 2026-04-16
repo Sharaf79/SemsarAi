@@ -7,11 +7,13 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from './guards/optional-jwt-auth.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { SmsModule } from '../sms/sms.module';
 
 @Module({
   imports: [
     PrismaModule,
     forwardRef(() => WhatsAppModule),
+    SmsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

@@ -18,8 +18,10 @@ function makeWhatsAppService(): jest.Mocked<WhatsAppService> {
     verifyToken: VERIFY_TOKEN,
     verifyWebhookSignature: jest.fn(),
     parseIncomingMessage: jest.fn(),
+    parseDeliveryStatuses: jest.fn().mockReturnValue([]),
     sendTextMessage: jest.fn(),
     getMediaUrl: jest.fn(),
+    isConfigured: jest.fn().mockReturnValue(true),
   } as unknown as jest.Mocked<WhatsAppService>;
   return svc;
 }
@@ -27,6 +29,7 @@ function makeWhatsAppService(): jest.Mocked<WhatsAppService> {
 function makeOrchestrator(): jest.Mocked<WhatsAppOrchestratorService> {
   return {
     processMessage: jest.fn().mockResolvedValue(undefined),
+    handleDeliveryStatuses: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<WhatsAppOrchestratorService>;
 }
 

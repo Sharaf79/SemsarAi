@@ -9,12 +9,12 @@ import { EnvironmentVariables } from './env.validation';
 function makeValidEnv(): Record<string, unknown> {
   return {
     DATABASE_URL: 'mysql://semsar:semsar_pass@localhost:3306/semsar_ai',
-    GEMINI_API_KEY: 'test-gemini-key',
-    JWT_SECRET: 'test-jwt-secret-32-chars-minimum!!',
-    WHATSAPP_TOKEN: 'test-wa-token',
-    WHATSAPP_PHONE_NUMBER_ID: '123456789',
-    WHATSAPP_APP_SECRET: 'test-app-secret',
-    WHATSAPP_VERIFY_TOKEN: 'test-verify-token',
+    GEMINI_API_KEY: 'AIzaSyDtEPg-URKXWCbSwlwPW3nI4uXujIZ6j20',
+    JWT_SECRET: '4Snl9jKO29lAJa1o+2AbDPKcKb6F80ICKb60Mo7ADR0=',
+    WHATSAPP_TOKEN: 'EAAb1GDB4KEoBRJJBAntw0CMRniwe4eZA3ZB32re4UZBIQOZBcI3qIIpBn6PhsTAc0f7YW53IQZBlqP8w4iJxvk7KWlRF1bS1ffyUiDG4rd6Sbk8ztIdlYvZCUHZAuxTlrArWmwxlaXUt6Be9AhJuFvKDvSLAkvvSoAfYqybaBoOHpmnJlsboWbHsGzUFZAGUuREngSZCS1J2e1M7ggzwy6H9WsvDgC0FepFBawjbyhwXur5rMQrJN5TivehuXeEawd0zrEvYa5s3r0RymNnyQNQZDZD',
+    WHATSAPP_PHONE_NUMBER_ID: '1004555129414691',
+    WHATSAPP_APP_SECRET: 'c8dd695933f50fc5bb5595a58fac5e94',
+    WHATSAPP_VERIFY_TOKEN: 'I5iCVE3aYEXYsrzlIEC2Qc8tZ6kP1fRQ',
   };
 }
 
@@ -124,5 +124,46 @@ describe('EnvironmentVariables validation', () => {
     expect(errors.length).toBeGreaterThan(0);
     const jwtError = errors.find((e) => e.property === 'JWT_SECRET');
     expect(jwtError).toBeDefined();
+  });
+
+  it('fails in production when placeholders are still present', async () => {
+    const env = plainToInstance(EnvironmentVariables, {
+      ...makeValidEnv(),
+      NODE_ENV: 'production',
+      GEMINI_API_KEY: 'your_gemini_api_key_here',
+      JWT_SECRET: 'your_jwt_secret_here',
+      WHATSAPP_TOKEN: 'your_whatsapp_token_here',
+      WHATSAPP_PHONE_NUMBER_ID: 'your_phone_number_id_here',
+      WHATSAPP_APP_SECRET: 'your_app_secret_here',
+      WHATSAPP_VERIFY_TOKEN: 'your_verify_token_here',
+    });
+
+    const errors = await validate(env);
+    const props = errors.map((error) => error.property);
+
+    expect(props).toEqual(expect.arrayContaining([
+      'GEMINI_API_KEY',
+      'JWT_SECRET',
+      'WHATSAPP_TOKEN',
+      'WHATSAPP_PHONE_NUMBER_ID',
+      'WHATSAPP_APP_SECRET',
+      'WHATSAPP_VERIFY_TOKEN',
+    ]));
+  });
+
+  it('allows placeholders outside production mode', async () => {
+    const env = plainToInstance(EnvironmentVariables, {
+      ...makeValidEnv(),
+      NODE_ENV: 'development',
+      GEMINI_API_KEY: 'your_gemini_api_key_here',
+      JWT_SECRET: 'your_jwt_secret_here',
+      WHATSAPP_TOKEN: 'your_whatsapp_token_here',
+      WHATSAPP_PHONE_NUMBER_ID: 'your_phone_number_id_here',
+      WHATSAPP_APP_SECRET: 'your_app_secret_here',
+      WHATSAPP_VERIFY_TOKEN: 'your_verify_token_here',
+    });
+
+    const errors = await validate(env);
+    expect(errors).toHaveLength(0);
   });
 });

@@ -11,6 +11,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { SmsService } from '../sms/sms.service';
 import { JwtPayload } from './guards/jwt-auth.guard';
 
 /** How long (ms) an OTP code is valid */
@@ -32,11 +33,12 @@ export class AuthService {
     private readonly config: ConfigService,
     @Inject(forwardRef(() => WhatsAppService))
     private readonly whatsapp: WhatsAppService,
+    private readonly sms: SmsService,
   ) {}
 
   // ─── POST /auth/send-otp ──────────────────────────────────────
 
-  async sendOtp(phone: string): Promise<{ message: string }> {
+  async sendOtp(phone: string): Promise<{ message: string; channel: 'whatsapp' | 'sms'; devOtp?: string }> {
     const normalised = this.normalisePhone(phone);
 
     // Rate-limit: no more than OTP_RL_MAX requests per phone per window
@@ -54,21 +56,56 @@ export class AuthService {
     const code = this.generateOtp();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
-    await this.prisma.otpCode.create({
+    const otpRecord = await this.prisma.otpCode.create({
       data: { phone: normalised, code, expiresAt },
     });
 
     // ── Send OTP via WhatsApp ──
     this.logger.log(`[OTP] Sending OTP to ${normalised}`);
     const isDev = this.config.get<string>('NODE_ENV') !== 'production';
+    let channel: 'whatsapp' | 'sms' = 'whatsapp';
+
     try {
-      await this.whatsapp.sendTextMessage(
-        normalised,
-        `كود التحقق الخاص بك في سمسار: ${code}\nالكود صالح لمدة 5 دقائق.`,
-      );
+      if (this.whatsapp.isConfigured()) {
+        // Production (or dev with real creds): use template for reliable delivery
+        const { messageId } = await this.whatsapp.sendOtpTemplate(
+          normalised,
+          code,
+        );
+        // Track delivery
+        await this.prisma.otpCode.update({
+          where: { id: otpRecord.id },
+          data: { whatsappMessageId: messageId, deliveryStatus: 'sent' },
+        });
+      } else {
+        // Dev mode without real WhatsApp credentials — log to console
+        this.logger.warn(`[DEV] OTP for ${normalised}: ${code}`);
+      }
     } catch (err) {
       this.logger.error(`Failed to send OTP via WhatsApp to ${normalised}`, err);
-      if (isDev) {
+
+      // ── SMS Fallback ──
+      if (this.sms.isAvailable()) {
+        this.logger.log(`[SMS] Attempting SMS fallback for ${normalised}`);
+        try {
+          await this.sms.sendOtp(normalised, code);
+          channel = 'sms';
+          await this.prisma.otpCode.update({
+            where: { id: otpRecord.id },
+            data: { deliveryStatus: 'sms_sent' },
+          });
+          this.logger.log(`[SMS] OTP sent via SMS to ${normalised}`);
+        } catch (smsErr) {
+          this.logger.error(`SMS fallback also failed for ${normalised}`, smsErr);
+          if (isDev) {
+            this.logger.warn(`[DEV] OTP for ${normalised}: ${code}`);
+          } else {
+            throw new BadRequestException(
+              'Failed to send OTP via WhatsApp and SMS. Please try again later.',
+            );
+          }
+        }
+      } else if (isDev) {
         this.logger.warn(`[DEV] OTP for ${normalised}: ${code}`);
       } else {
         throw new BadRequestException(
@@ -79,6 +116,8 @@ export class AuthService {
 
     return {
       message: 'OTP sent successfully',
+      channel,
+      // Only include devOtp in non-production environments
       ...(isDev ? { devOtp: code } : {}),
     };
   }
@@ -165,13 +204,16 @@ export class AuthService {
 
   async getProfile(
     userId: string,
-  ): Promise<{ id: string; phone: string; name: string; email: string | null }> {
+  ): Promise<{ id: string; phone: string; name: string; email: string | null; dateOfBirth: string | null; sexType: string | null; notes: string | null }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, phone: true, name: true, email: true },
+      select: { id: true, phone: true, name: true, email: true, dateOfBirth: true, sexType: true, notes: true },
     });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    return {
+      ...user,
+      dateOfBirth: user.dateOfBirth?.toISOString() ?? null,
+    };
   }
 
   // ─── PATCH /auth/profile ──────────────────────────────────────
@@ -180,17 +222,29 @@ export class AuthService {
     userId: string,
     name: string,
     email?: string,
-  ): Promise<{ id: string; name: string; email: string | null; phone: string }> {
+    dateOfBirth?: string,
+    sexType?: string,
+    notes?: string,
+  ): Promise<{ id: string; name: string; email: string | null; phone: string; dateOfBirth: string | null; sexType: string | null; notes: string | null }> {
     const exists = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!exists) throw new NotFoundException('User not found');
 
     const user = await this.prisma.user.update({
       where: { id: userId },
-      data: { name, ...(email !== undefined ? { email } : {}) },
-      select: { id: true, name: true, email: true, phone: true },
+      data: {
+        name,
+        ...(email !== undefined ? { email } : {}),
+        ...(dateOfBirth !== undefined ? { dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null } : {}),
+        ...(sexType !== undefined ? { sexType: sexType || null } : {}),
+        ...(notes !== undefined ? { notes: notes || null } : {}),
+      },
+      select: { id: true, name: true, email: true, phone: true, dateOfBirth: true, sexType: true, notes: true },
     });
 
-    return user;
+    return {
+      ...user,
+      dateOfBirth: user.dateOfBirth?.toISOString() ?? null,
+    };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────

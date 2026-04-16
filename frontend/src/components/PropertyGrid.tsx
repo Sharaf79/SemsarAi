@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchProperties } from '../api/properties';
 import { PropertyCard } from './PropertyCard';
+import { useFavorites } from '../store/FavoritesContext';
+import { useAuth } from '../store/AuthContext';
 import type { Property, PropertyFilters } from '../types/index';
 
 interface PropertyGridProps {
@@ -29,6 +31,8 @@ const SkeletonCard = () => (
 
 export const PropertyGrid: React.FC<PropertyGridProps> = ({ filters, onContact, onChat }) => {
   const [page, setPage] = useState(1);
+  const { isAuthenticated } = useAuth();
+  const { isFavorite, toggle } = useFavorites();
 
   const mergedFilters: PropertyFilters = { ...filters, page, limit: 12 };
 
@@ -73,7 +77,14 @@ export const PropertyGrid: React.FC<PropertyGridProps> = ({ filters, onContact, 
       ) : (
         <div className="property-grid">
           {data?.data.map((p) => (
-            <PropertyCard key={p.id} property={p} onContact={onContact} onChat={onChat} />
+            <PropertyCard
+              key={p.id}
+              property={p}
+              onContact={onContact}
+              onChat={onChat}
+              isFavorited={isFavorite(p.id)}
+              onToggleFavorite={isAuthenticated ? toggle : undefined}
+            />
           ))}
         </div>
       )}

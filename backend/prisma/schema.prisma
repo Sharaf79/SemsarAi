@@ -17,6 +17,9 @@ model User {
   name             String
   phone            String   @unique
   email            String?
+  dateOfBirth      DateTime? @map("date_of_birth")
+  sexType          String?   @map("sex_type")
+  notes            String?   @db.Text
   status           UserStatus @default(ACTIVE)
   isPhoneVerified  Boolean  @default(false) @map("is_phone_verified")
   isEmailVerified  Boolean  @default(false) @map("is_email_verified")
@@ -34,6 +37,8 @@ model User {
   listings         Listing[]
   drafts           PropertyDraft[]
   recommendations  Recommendation[]
+  favorites        Favorite[]
+  listingCredits   ListingCredit[]
 
   @@map("users")
 }
@@ -43,7 +48,7 @@ model Property {
   userId          String         @map("user_id")
   title           String
   description     String?        @db.Text
-  price           Decimal        @db.Decimal(14, 2)
+  price           Decimal?       @db.Decimal(14, 2)
   type            PropertyType
   propertyKind    PropertyKind?  @map("property_kind")
   bedrooms        Int?
@@ -58,15 +63,43 @@ model Property {
   nearestLandmark String?        @map("nearest_landmark")
   latitude        Decimal?       @db.Decimal(10, 8)
   longitude       Decimal?       @db.Decimal(11, 8)
-  propertyStatus  PropertyStatus @default(ACTIVE) @map("property_status")
+  propertyStatus  PropertyStatus @default(PENDING_REVIEW) @map("property_status")
+  isPaid          Boolean        @default(false) @map("is_paid")
+  
+  // -- Extended Apartment Fields --
+  apartmentType   String?        @map("apartment_type")
+  ownershipType   String?        @map("ownership_type")
+  amenities       Json?
+  floorLevel      String?        @map("floor_level")
+  isFurnished     Boolean?       @map("is_furnished")
+  readiness       String?
+  deliveryDate    String?        @map("delivery_date")
+  deliveryTerms   String?        @map("delivery_terms") // شروط التسليم
+  finishingType   String?        @map("finishing_type")
+  paymentMethod   String?        @map("payment_method")
+  paymentType     String?        @map("payment_type") // كاش / تقسيط
+  isNegotiable    Boolean        @default(false) @map("is_negotiable")
+  rentRateType    String?        @map("rent_rate_type")
+  
+  // -- Resort/Seasonal Property Fields --
+  location        String?        // الموقع — Location description
+  rentalRate      Decimal?       @db.Decimal(14, 2) @map("rental_rate") // معدل الإيجار
+  rentalFees      Decimal?       @db.Decimal(14, 2) @map("rental_fees") // رسوم الايجار
+  downPayment     Decimal?       @db.Decimal(14, 2) @map("down_payment") // مقدم
+  insurance       Decimal?       @db.Decimal(14, 2) // التأمين
+
+  // -- Advertisement Fields --
+  adTitle         String?        @map("ad_title")
+  adDescription   String?        @db.Text @map("ad_description")
+
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
-
   user            User           @relation(fields: [userId], references: [id])
   media           PropertyMedia[]
   negotiations    Negotiation[]
   drafts          PropertyDraft[]
   recommendations Recommendation[]
+  favorites       Favorite[]
 
   @@index([userId])
   @@index([type, propertyStatus])
@@ -189,6 +222,21 @@ model Payment {
   @@map("payments")
 }
 
+model ListingCredit {
+  id        String       @id @default(uuid())
+  userId    String       @map("user_id")
+  amount    Decimal      @db.Decimal(14, 2) @default(100)
+  status    CreditStatus @default(PENDING)
+  draftId   String?      @map("draft_id") // set when consumed by a draft
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  user      User         @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@map("listing_credits")
+}
+
 model AiLog {
   id            String   @id @default(uuid())
   negotiationId String?  @map("negotiation_id")
@@ -219,6 +267,20 @@ model Recommendation {
   @@index([buyerId, status])
   @@index([propertyId])
   @@map("recommendations")
+}
+
+model Favorite {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  propertyId String   @map("property_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User     @relation(fields: [userId], references: [id])
+  property   Property @relation(fields: [propertyId], references: [id])
+
+  @@unique([userId, propertyId])
+  @@index([userId])
+  @@map("favorites")
 }
 
 // ─── Intake Tables (MVP WhatsApp Flow) ──────────────────────────
@@ -283,13 +345,16 @@ model Location {
 // ─── Auth ─────────────────────────────────────────────────────
 
 model OtpCode {
-  id        String    @id @default(uuid())
-  phone     String
-  code      String
-  attempts  Int       @default(0)
-  expiresAt DateTime  @map("expires_at")
-  usedAt    DateTime? @map("used_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id                 String    @id @default(uuid())
+  phone              String
+  code               String
+  attempts           Int       @default(0)
+  expiresAt          DateTime  @map("expires_at")
+  usedAt             DateTime? @map("used_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  whatsappMessageId  String?   @map("whatsapp_message_id")
+  deliveryStatus     String?   @map("delivery_status")     // sent | delivered | read | failed
+  deliveryUpdatedAt  DateTime? @map("delivery_updated_at")
 
   @@index([phone, createdAt])
   @@map("otp_codes")
@@ -381,6 +446,7 @@ enum PropertyType {
 }
 
 enum PropertyStatus {
+  PENDING_REVIEW
   ACTIVE
   INACTIVE
   SOLD
@@ -408,6 +474,12 @@ enum PaymentType {
   DEPOSIT
   COMMISSION
   INSURANCE
+}
+
+enum CreditStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }
 
 enum PaymentProvider {

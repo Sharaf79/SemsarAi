@@ -8,6 +8,7 @@ import { Prisma, PropertyStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { QueryPropertiesDto, SortOption } from './dto';
+import { UpdatePropertyDto } from './dto';
 
 /** Safe property fields returned to the public — never includes phone / email */
 const PUBLIC_PROPERTY_SELECT = {
@@ -27,6 +28,27 @@ const PUBLIC_PROPERTY_SELECT = {
   nearestLandmark: true,
   propertyStatus: true,
   createdAt: true,
+  apartmentType: true,
+  ownershipType: true,
+  amenities: true,
+  floorLevel: true,
+  isFurnished: true,
+  readiness: true,
+  deliveryDate: true,
+  deliveryTerms: true,
+  finishingType: true,
+  paymentMethod: true,
+  paymentType: true,
+  isNegotiable: true,
+  rentRateType: true,
+  // Resort/Seasonal property fields
+  location: true,
+  rentalRate: true,
+  rentalFees: true,
+  downPayment: true,
+  insurance: true,
+  adTitle: true,
+  adDescription: true,
   media: {
     select: { id: true, url: true, type: true },
     take: 6,
@@ -110,6 +132,21 @@ export class PropertiesService {
     return { data, meta: { page, limit, total } };
   }
 
+  // ─── GET /properties/:id ─────────────────────────────────────
+
+  async findOne(id: string) {
+    const property = await this.prisma.property.findUnique({
+      where: { id },
+      select: PUBLIC_PROPERTY_SELECT,
+    });
+    
+    if (!property) {
+      throw new NotFoundException(`Property with ID ${id} not found`);
+    }
+
+    return property;
+  }
+
   // ─── GET /properties/:id/owner-contact ───────────────────────
 
   /**
@@ -157,5 +194,137 @@ export class PropertiesService {
     }
 
     return { ownerPhone: owner.phone };
+  }
+
+  // ─── GET /properties/mine ────────────────────────────────────
+
+  async findMine(userId: string) {
+    const data = await this.prisma.property.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: { ...PUBLIC_PROPERTY_SELECT, userId: true },
+    });
+    return { data, meta: { total: data.length } };
+  }
+
+  // ─── PATCH /properties/:id/status ────────────────────────────
+
+  async updateStatus(
+    propertyId: string,
+    userId: string,
+    status: PropertyStatus,
+  ) {
+    const prop = await this.prisma.property.findUnique({
+      where: { id: propertyId },
+    });
+    if (!prop) throw new NotFoundException(`Property ${propertyId} not found`);
+    if (prop.userId !== userId)
+      throw new ForbiddenException('لا يمكنك تعديل هذا العقار');
+
+    return this.prisma.property.update({
+      where: { id: propertyId },
+      data: { propertyStatus: status },
+    });
+  }
+
+  // ─── PATCH /properties/:id ───────────────────────────────────
+
+  async update(propertyId: string, userId: string, dto: UpdatePropertyDto) {
+    const prop = await this.prisma.property.findUnique({
+      where: { id: propertyId },
+    });
+    if (!prop) throw new NotFoundException(`Property ${propertyId} not found`);
+    if (prop.userId !== userId)
+      throw new ForbiddenException('لا يمكنك تعديل هذا العقار');
+
+    const updated = await this.prisma.property.update({
+      where: { id: propertyId },
+      data: {
+        ...(dto.adTitle !== undefined ? { adTitle: dto.adTitle } : {}),
+        ...(dto.adDescription !== undefined
+          ? { adDescription: dto.adDescription }
+          : {}),
+        ...(dto.price !== undefined ? { price: dto.price } : {}),
+        ...(dto.bedrooms !== undefined ? { bedrooms: dto.bedrooms } : {}),
+        ...(dto.bathrooms !== undefined ? { bathrooms: dto.bathrooms } : {}),
+        ...(dto.areaM2 !== undefined ? { areaM2: dto.areaM2 } : {}),
+        ...(dto.governorate !== undefined
+          ? { governorate: dto.governorate }
+          : {}),
+        ...(dto.city !== undefined ? { city: dto.city } : {}),
+        ...(dto.district !== undefined ? { district: dto.district } : {}),
+        ...(dto.isNegotiable !== undefined
+          ? { isNegotiable: dto.isNegotiable }
+          : {}),
+        ...(dto.propertyKind !== undefined
+          ? { propertyKind: dto.propertyKind }
+          : {}),
+      },
+      select: PUBLIC_PROPERTY_SELECT,
+    });
+
+    return updated;
+  }
+
+  // ─── DELETE /properties/:id ──────────────────────────────────
+
+  async remove(propertyId: string, userId: string) {
+    const prop = await this.prisma.property.findUnique({
+      where: { id: propertyId },
+    });
+    if (!prop) throw new NotFoundException(`Property ${propertyId} not found`);
+    if (prop.userId !== userId)
+      throw new ForbiddenException('لا يمكنك حذف هذا العقار');
+
+    return this.prisma.property.update({
+      where: { id: propertyId },
+      data: { propertyStatus: PropertyStatus.INACTIVE },
+    });
+  }
+
+  // ─── Admin: Find by status ──────────────────────────────────
+
+  async findByStatus(
+    status: PropertyStatus,
+    page = 1,
+    limit = 20,
+  ) {
+    const skip = (page - 1) * limit;
+    const where = { propertyStatus: status };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.property.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          ...PUBLIC_PROPERTY_SELECT,
+          userId: true,
+          user: {
+            select: { phone: true, name: true },
+          },
+        },
+      }),
+      this.prisma.property.count({ where }),
+    ]);
+
+    return { data, meta: { page, limit, total } };
+  }
+
+  // ─── Admin: Update status (no owner check) ──────────────────
+
+  async adminUpdateStatus(propertyId: string, status: PropertyStatus) {
+    const prop = await this.prisma.property.findUnique({
+      where: { id: propertyId },
+    });
+
+    if (!prop) throw new NotFoundException(`Property ${propertyId} not found`);
+
+    return this.prisma.property.update({
+      where: { id: propertyId },
+      data: { propertyStatus: status },
+      select: PUBLIC_PROPERTY_SELECT,
+    });
   }
 }

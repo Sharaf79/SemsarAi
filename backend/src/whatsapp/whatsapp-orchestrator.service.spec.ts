@@ -9,7 +9,7 @@
  *   5. Error handling
  */
 import { WhatsAppOrchestratorService } from './whatsapp-orchestrator.service';
-import { WhatsAppService } from './whatsapp.service';
+import { WhatsAppService, DeliveryStatus } from './whatsapp.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConversationEngineService } from '../conversation-engine/conversation-engine.service';
 import { ParsedMessage } from '../common/types';
@@ -36,6 +36,10 @@ function makePrismaService() {
     },
     negotiation: {
       findFirst: jest.fn().mockResolvedValue(null),
+    },
+    otpCode: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue({}),
     },
   } as unknown as jest.Mocked<PrismaService>;
 }
@@ -252,6 +256,92 @@ describe('WhatsAppOrchestratorService', () => {
       await expect(
         orchestrator.processMessage(textMessage('مرحبا')),
       ).rejects.toThrow('API 401');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // 5. Delivery status handling
+  // ────────────────────────────────────────────────────────────
+  describe('handleDeliveryStatuses', () => {
+    const mockStatus: DeliveryStatus = {
+      id: 'wamid.abc123',
+      status: 'delivered',
+      timestamp: '1720000000',
+      recipientId: '201234567890',
+    };
+
+    it('updates OTP record when matching messageId found', async () => {
+      const { orchestrator, prisma } = makeOrchestrator();
+      const otpRecord = { id: 'otp-1', whatsappMessageId: 'wamid.abc123' };
+      (prisma.otpCode.findFirst as jest.Mock).mockResolvedValue(otpRecord);
+
+      await orchestrator.handleDeliveryStatuses([mockStatus]);
+
+      expect(prisma.otpCode.findFirst).toHaveBeenCalledWith({
+        where: { whatsappMessageId: 'wamid.abc123' },
+      });
+      expect(prisma.otpCode.update).toHaveBeenCalledWith({
+        where: { id: 'otp-1' },
+        data: {
+          deliveryStatus: 'delivered',
+          deliveryUpdatedAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('skips unknown messageIds without error', async () => {
+      const { orchestrator, prisma } = makeOrchestrator();
+      (prisma.otpCode.findFirst as jest.Mock).mockResolvedValue(null);
+
+      // Should not throw
+      await orchestrator.handleDeliveryStatuses([mockStatus]);
+
+      expect(prisma.otpCode.findFirst).toHaveBeenCalled();
+      expect(prisma.otpCode.update).not.toHaveBeenCalled();
+    });
+
+    it('processes multiple statuses', async () => {
+      const { orchestrator, prisma } = makeOrchestrator();
+      (prisma.otpCode.findFirst as jest.Mock)
+        .mockResolvedValueOnce({ id: 'otp-1', whatsappMessageId: 'wamid.1' })
+        .mockResolvedValueOnce(null); // second status not found
+
+      await orchestrator.handleDeliveryStatuses([
+        { id: 'wamid.1', status: 'read', timestamp: '100', recipientId: '20111' },
+        { id: 'wamid.2', status: 'sent', timestamp: '200', recipientId: '20222' },
+      ]);
+
+      expect(prisma.otpCode.findFirst).toHaveBeenCalledTimes(2);
+      expect(prisma.otpCode.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('handles empty statuses array', async () => {
+      const { orchestrator, prisma } = makeOrchestrator();
+
+      await orchestrator.handleDeliveryStatuses([]);
+
+      expect(prisma.otpCode.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('continues processing after an error on one status', async () => {
+      const { orchestrator, prisma } = makeOrchestrator();
+      (prisma.otpCode.findFirst as jest.Mock)
+        .mockRejectedValueOnce(new Error('DB error'))
+        .mockResolvedValueOnce({ id: 'otp-2', whatsappMessageId: 'wamid.2' });
+
+      await orchestrator.handleDeliveryStatuses([
+        { id: 'wamid.1', status: 'sent', timestamp: '100', recipientId: '20111' },
+        { id: 'wamid.2', status: 'delivered', timestamp: '200', recipientId: '20222' },
+      ]);
+
+      // Despite first one erroring, second one should still be processed
+      expect(prisma.otpCode.update).toHaveBeenCalledWith({
+        where: { id: 'otp-2' },
+        data: {
+          deliveryStatus: 'delivered',
+          deliveryUpdatedAt: expect.any(Date),
+        },
+      });
     });
   });
 });

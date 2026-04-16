@@ -1,8 +1,8 @@
 import { apiClient } from './client';
 import type { User } from '../types';
 
-export async function sendOtp(phone: string): Promise<{ message: string; devOtp?: string }> {
-  const { data } = await apiClient.post<{ message: string; devOtp?: string }>(
+export async function sendOtp(phone: string): Promise<{ message: string; channel: 'whatsapp' | 'sms'; devOtp?: string }> {
+  const { data } = await apiClient.post<{ message: string; channel: 'whatsapp' | 'sms'; devOtp?: string }>(
     '/auth/send-otp',
     { phone },
   );
@@ -26,10 +26,16 @@ export async function verifyOtp(
 export async function updateProfile(
   name: string,
   email?: string,
+  dateOfBirth?: string | null,
+  sexType?: string | null,
+  notes?: string | null,
 ): Promise<User> {
   const { data } = await apiClient.patch<User>('/auth/profile', {
     name,
     ...(email ? { email } : {}),
+    ...(dateOfBirth !== undefined ? { dateOfBirth } : {}),
+    ...(sexType !== undefined ? { sexType } : {}),
+    ...(notes !== undefined ? { notes } : {}),
   });
   return data;
 }

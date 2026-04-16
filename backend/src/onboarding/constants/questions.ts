@@ -7,10 +7,10 @@ import { OnboardingStep } from '@prisma/client';
 // ─── Step Ordering ──────────────────────────────────────────────
 
 export const STEP_ORDER: OnboardingStep[] = [
-  OnboardingStep.PROPERTY_TYPE,
   OnboardingStep.GOVERNORATE,
   OnboardingStep.CITY,
   OnboardingStep.DISTRICT,
+  OnboardingStep.PROPERTY_TYPE,
   OnboardingStep.DETAILS,
   OnboardingStep.PRICE,
   OnboardingStep.MEDIA,
@@ -56,7 +56,7 @@ export interface FieldDef {
 
 export interface QuestionDef {
   question: string; // Arabic text (may contain {governorate_name} / {city_name} templates)
-  inputType: 'multi-choice' | 'form' | 'number' | 'file' | 'display';
+  inputType: 'multi-choice' | 'form' | 'number' | 'file' | 'display' | 'map' | 'textarea' | 'optional-textarea';
   options?: string[]; // for static multi-choice (property_type, listing_type)
   optionsSource?: 'governorates' | 'cities' | 'districts'; // dynamic options from DB
   fields?: FieldDef[]; // for form-type
@@ -78,7 +78,7 @@ export const COMBINED_PROPERTY_MAP: Record<string, { kind: string; listingType: 
 
 export const ONBOARDING_QUESTIONS: Record<OnboardingStep, QuestionDef> = {
   [OnboardingStep.PROPERTY_TYPE]: {
-    question: 'حضرتك نوع العقار ايه؟',
+    question: 'حضرتك نوع العقار ما؟',
     inputType: 'multi-choice',
     options: Object.keys(COMBINED_PROPERTY_MAP),
   },
@@ -88,17 +88,17 @@ export const ONBOARDING_QUESTIONS: Record<OnboardingStep, QuestionDef> = {
     options: ['بيع', 'إيجار'],
   },
   [OnboardingStep.GOVERNORATE]: {
-    question: 'العقار في أنهي محافظة؟',
+    question: 'العقار في أي محافظة؟',
     inputType: 'multi-choice',
     optionsSource: 'governorates',
   },
   [OnboardingStep.CITY]: {
-    question: 'في أنهي مدينة في {governorate_name}؟',
+    question: 'في أي مدينة في {governorate_name}؟',
     inputType: 'multi-choice',
     optionsSource: 'cities',
   },
   [OnboardingStep.DISTRICT]: {
-    question: 'في أنهي حي/منطقة في {city_name}؟',
+    question: 'في أي حي/منطقة في {city_name}؟',
     inputType: 'multi-choice',
     optionsSource: 'districts',
   },
@@ -144,7 +144,7 @@ export const AREA_MAP: Record<string, number> = {
   '300+ م²': 300,
 };
 
-export const BEDROOM_OPTIONS = ['1', '2', '3', '4', '5+'];
+export const BEDROOM_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 
 export const BEDROOM_MAP: Record<string, number> = {
   '1': 1, '2': 2, '3': 3, '4': 4, '5+': 5,
@@ -155,6 +155,18 @@ export const BATHROOM_OPTIONS = ['1', '2', '3', '4+'];
 export const BATHROOM_MAP: Record<string, number> = {
   '1': 1, '2': 2, '3': 3, '4+': 4,
 };
+
+// ─── Extended Apartment Sub-step Options ────────────────────
+export const APARTMENT_TYPES = ['شقة', 'دوبلكس', 'بنتهاوس', 'ستوديو'];
+
+export const RENT_APARTMENT_TYPES = ['شقة', 'دوبلكس', 'بنتهاوس', 'غرفة', 'ستوديو', 'شقة فندقية', 'سطح'];
+
+export const RENT_RATE_OPTIONS = ['يومي', 'شهري', 'سنوي'];
+export const OWNERSHIP_OPTIONS = ['أول سكن', 'إعادة بيع'];
+export const READINESS_OPTIONS = ['جاهز', 'قيد الإنشاء'];
+export const FINISHING_OPTIONS = ['بدون تشطيب', 'نصف تشطيب', 'تشطيب كامل', 'سوبر لوكس', 'ألترا سوبر لوكس'];
+export const FLOOR_OPTIONS = ['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '10+'];
+export const YES_NO_OPTIONS = ['نعم', 'لا'];
 
 // ─── Price Options (MCQ) ────────────────────────────────────
 
@@ -188,6 +200,27 @@ export const RENT_PRICE_MAP: Record<string, number> = {
   '15,000 جنيه': 15000,
   '20,000 جنيه': 20000,
   '30,000 جنيه': 30000,
+};
+
+export const RENT_DAILY_PRICE_OPTIONS = [
+  '200 جنيه', '300 جنيه', '500 جنيه', '750 جنيه',
+  '1,000 جنيه', '1,500 جنيه', '2,000 جنيه', '3,000 جنيه',
+];
+
+export const RENT_DAILY_PRICE_MAP: Record<string, number> = {
+  '200 جنيه': 200, '300 جنيه': 300, '500 جنيه': 500, '750 جنيه': 750,
+  '1,000 جنيه': 1000, '1,500 جنيه': 1500, '2,000 جنيه': 2000, '3,000 جنيه': 3000,
+};
+
+export const RENT_ANNUAL_PRICE_OPTIONS = [
+  '20,000 جنيه', '30,000 جنيه', '50,000 جنيه', '75,000 جنيه',
+  '100,000 جنيه', '150,000 جنيه', '200,000 جنيه', '300,000 جنيه',
+];
+
+export const RENT_ANNUAL_PRICE_MAP: Record<string, number> = {
+  '20,000 جنيه': 20000, '30,000 جنيه': 30000, '50,000 جنيه': 50000,
+  '75,000 جنيه': 75000, '100,000 جنيه': 100000, '150,000 جنيه': 150000,
+  '200,000 جنيه': 200000, '300,000 جنيه': 300000,
 };
 
 // ─── Media & Review Options (MCQ) ───────────────────────────

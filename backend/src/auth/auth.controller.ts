@@ -60,7 +60,7 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ) {
     this.logger.debug(`PATCH /auth/profile — user=${user.sub}`);
-    return this.authService.updateProfile(user.sub, dto.name, dto.email);
+    return this.authService.updateProfile(user.sub, dto.name, dto.email, dto.dateOfBirth, dto.sexType, dto.notes);
   }
 
   // ─── GET /auth/profile ────────────────────────────────────────────

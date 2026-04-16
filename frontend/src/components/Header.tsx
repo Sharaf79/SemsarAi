@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../store/AuthContext';
 import { useChatContext } from '../store/ChatContext';
+import { UserMenu } from './UserMenu';
 
 interface HeaderProps {
   onLoginClick: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { openChat } = useChatContext();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="header">
@@ -30,20 +32,20 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
         </button>
 
         {isAuthenticated && user ? (
-          <>
-            <div className="header__avatar" title={user.name ?? 'مستخدم'}>
-              {user.name ? user.name[0].toUpperCase() : '👤'}
-            </div>
-            <span style={{ fontWeight: 600, margin: '0 8px' }}>
-              أهلاً بك {user.name ? `، ${user.name}` : ''}
-            </span>
+          <div className="header__menu-anchor">
             <button
-              className="btn btn-muted btn-sm"
-              onClick={logout}
+              className="header__avatar"
+              onClick={() => setMenuOpen((v) => !v)}
+              title={user.name ?? 'مستخدم'}
             >
-              خروج
+              {user.name ? user.name[0].toUpperCase() : '👤'}
             </button>
-          </>
+            <UserMenu
+              isOpen={menuOpen}
+              onClose={() => setMenuOpen(false)}
+              onLoginClick={onLoginClick}
+            />
+          </div>
         ) : (
           <button
             className="btn btn-primary btn-sm"

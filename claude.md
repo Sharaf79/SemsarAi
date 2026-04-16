@@ -13,7 +13,7 @@
 - AI (Gemini) is the communication layer — backend enforces ALL logic.
 - Onboarding uses `PropertyDraft` state machine — no free chat for data collection.
 - Negotiation uses algorithm with bounded user actions — no free text.
-- Egyptian Arabic (عامية مهذبة) for user-facing strings.
+- Egyptian Arabic (فصحي  مهذبة) for user-facing strings.
 - `app/` = FastAPI chat UI (development/demo only).
 - `_archive/` = old Python MVP (reference only, not active).
 

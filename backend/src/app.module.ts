@@ -22,6 +22,9 @@ import { EnvironmentVariables } from './config';
 import { ConversationModule } from './conversation-engine/conversation-engine.module';
 import { ChatModule } from './chat/chat.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
+import { FavoritesModule } from './favorites/favorites.module';
+import { ListingCreditsModule } from './listing-credits/listing-credits.module';
+import { AdminModule } from './admin/admin.module';
 
 function validate(config: Record<string, unknown>): EnvironmentVariables {
   const validated = plainToInstance(EnvironmentVariables, config, {
@@ -59,6 +62,9 @@ function validate(config: Record<string, unknown>): EnvironmentVariables {
     ConversationModule,
     ChatModule,
     RecommendationsModule,
+    FavoritesModule,
+    ListingCreditsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
