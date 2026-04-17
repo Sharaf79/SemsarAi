@@ -13,32 +13,33 @@ datasource db {
 // ─── Constitution Tables (Phase 1) ──────────────────────────────
 
 model User {
-  id               String   @id @default(uuid())
-  name             String
-  phone            String   @unique
-  email            String?
-  dateOfBirth      DateTime? @map("date_of_birth")
-  sexType          String?   @map("sex_type")
-  notes            String?   @db.Text
-  status           UserStatus @default(ACTIVE)
-  isPhoneVerified  Boolean  @default(false) @map("is_phone_verified")
-  isEmailVerified  Boolean  @default(false) @map("is_email_verified")
-  userType         UserType @default(USER) @map("user_type")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id              String     @id @default(uuid())
+  name            String
+  phone           String     @unique
+  email           String?
+  dateOfBirth     DateTime?  @map("date_of_birth")
+  sexType         String?    @map("sex_type")
+  notes           String?    @db.Text
+  status          UserStatus @default(ACTIVE)
+  isPhoneVerified Boolean    @default(false) @map("is_phone_verified")
+  isEmailVerified Boolean    @default(false) @map("is_email_verified")
+  userType        UserType   @default(USER) @map("user_type")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  properties       Property[]
-  buyerNegotiations  Negotiation[] @relation("BuyerNegotiations")
-  sellerNegotiations Negotiation[] @relation("SellerNegotiations")
-  buyerDeals       Deal[]   @relation("BuyerDeals")
-  sellerDeals      Deal[]   @relation("SellerDeals")
-  payments         Payment[]
-  conversations    Conversation[]
-  listings         Listing[]
-  drafts           PropertyDraft[]
-  recommendations  Recommendation[]
-  favorites        Favorite[]
-  listingCredits   ListingCredit[]
+  properties         Property[]
+  buyerNegotiations  Negotiation[]     @relation("BuyerNegotiations")
+  sellerNegotiations Negotiation[]     @relation("SellerNegotiations")
+  buyerDeals         Deal[]            @relation("BuyerDeals")
+  sellerDeals        Deal[]            @relation("SellerDeals")
+  payments           Payment[]
+  conversations      Conversation[]
+  listings           Listing[]
+  drafts             PropertyDraft[]
+  recommendations    Recommendation[]
+  favorites          Favorite[]
+  listingCredits     ListingCredit[]
+  propertyRequests   PropertyRequest[]
 
   @@map("users")
 }
@@ -53,7 +54,7 @@ model Property {
   propertyKind    PropertyKind?  @map("property_kind")
   bedrooms        Int?
   bathrooms       Int?
-  areaM2          Decimal?       @db.Decimal(10, 2) @map("area_m2")
+  areaM2          Decimal?       @map("area_m2") @db.Decimal(10, 2)
   country         String         @default("Egypt")
   governorate     String?
   city            String?
@@ -65,45 +66,47 @@ model Property {
   longitude       Decimal?       @db.Decimal(11, 8)
   propertyStatus  PropertyStatus @default(PENDING_REVIEW) @map("property_status")
   isPaid          Boolean        @default(false) @map("is_paid")
-  
+
   // -- Extended Apartment Fields --
-  apartmentType   String?        @map("apartment_type")
-  ownershipType   String?        @map("ownership_type")
-  amenities       Json?
-  floorLevel      String?        @map("floor_level")
-  isFurnished     Boolean?       @map("is_furnished")
-  readiness       String?
-  deliveryDate    String?        @map("delivery_date")
-  deliveryTerms   String?        @map("delivery_terms") // شروط التسليم
-  finishingType   String?        @map("finishing_type")
-  paymentMethod   String?        @map("payment_method")
-  paymentType     String?        @map("payment_type") // كاش / تقسيط
-  isNegotiable    Boolean        @default(false) @map("is_negotiable")
-  rentRateType    String?        @map("rent_rate_type")
-  
+  apartmentType String?  @map("apartment_type")
+  ownershipType String?  @map("ownership_type")
+  amenities     Json?
+  floorLevel    String?  @map("floor_level")
+  isFurnished   Boolean? @map("is_furnished")
+  readiness     String?
+  deliveryDate  String?  @map("delivery_date")
+  deliveryTerms String?  @map("delivery_terms") // شروط التسليم
+  finishingType String?  @map("finishing_type")
+  paymentMethod String?  @map("payment_method")
+  paymentType   String?  @map("payment_type") // كاش / تقسيط
+  isNegotiable  Boolean  @default(false) @map("is_negotiable")
+  rentRateType  String?  @map("rent_rate_type")
+
   // -- Resort/Seasonal Property Fields --
-  location        String?        // الموقع — Location description
-  rentalRate      Decimal?       @db.Decimal(14, 2) @map("rental_rate") // معدل الإيجار
-  rentalFees      Decimal?       @db.Decimal(14, 2) @map("rental_fees") // رسوم الايجار
-  downPayment     Decimal?       @db.Decimal(14, 2) @map("down_payment") // مقدم
-  insurance       Decimal?       @db.Decimal(14, 2) // التأمين
+  location    String? // الموقع — Location description
+  rentalRate  Decimal? @map("rental_rate") @db.Decimal(14, 2) // معدل الإيجار
+  rentalFees  Decimal? @map("rental_fees") @db.Decimal(14, 2) // رسوم الايجار
+  downPayment Decimal? @map("down_payment") @db.Decimal(14, 2) // مقدم
+  insurance   Decimal? @db.Decimal(14, 2) // التأمين
 
   // -- Advertisement Fields --
-  adTitle         String?        @map("ad_title")
-  adDescription   String?        @db.Text @map("ad_description")
+  adTitle       String? @map("ad_title")
+  adDescription String? @map("ad_description") @db.Text
 
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  user            User           @relation(fields: [userId], references: [id])
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  user            User             @relation(fields: [userId], references: [id])
   media           PropertyMedia[]
   negotiations    Negotiation[]
   drafts          PropertyDraft[]
   recommendations Recommendation[]
   favorites       Favorite[]
+  matches         PropertyMatch[]
 
   @@index([userId])
   @@index([type, propertyStatus])
   @@index([governorate, city, district])
+  @@index([propertyStatus, type, propertyKind])
   @@map("properties")
 }
 
@@ -122,40 +125,40 @@ model LowerOffice {
   licenseNumber     String?      @map("license_number")
   positionTitle     String?      @map("position_title")
   workingHours      String?      @map("working_hours")
-  ratingScore       Decimal?     @db.Decimal(3, 2) @map("rating_score")
+  ratingScore       Decimal?     @map("rating_score") @db.Decimal(3, 2)
   maxProperties     Int?         @map("max_properties")
   notes             String?      @db.Text
-  locationLatitude  Decimal?     @db.Decimal(10, 8) @map("location_latitude")
-  locationLongitude Decimal?     @db.Decimal(11, 8) @map("location_longitude")
+  locationLatitude  Decimal?     @map("location_latitude") @db.Decimal(10, 8)
+  locationLongitude Decimal?     @map("location_longitude") @db.Decimal(11, 8)
   activeStatus      OfficeStatus @default(ACTIVE) @map("active_status")
   createdAt         DateTime     @default(now()) @map("created_at")
   updatedAt         DateTime     @updatedAt @map("updated_at")
 
-  deals             Deal[]
+  deals Deal[]
 
   @@index([governorate, city, district])
   @@map("lower_offices")
 }
 
 model Negotiation {
-  id            String            @id @default(uuid())
-  propertyId    String            @map("property_id")
-  buyerId       String            @map("buyer_id")
-  sellerId      String            @map("seller_id")
-  status        NegotiationStatus @default(ACTIVE)
-  currentOffer  Decimal?          @db.Decimal(14, 2) @map("current_offer")
-  minPrice      Decimal?          @db.Decimal(14, 2) @map("min_price")
-  maxPrice      Decimal?          @db.Decimal(14, 2) @map("max_price")
-  roundNumber   Int               @default(0) @map("round_number")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
+  id           String            @id @default(uuid())
+  propertyId   String            @map("property_id")
+  buyerId      String            @map("buyer_id")
+  sellerId     String            @map("seller_id")
+  status       NegotiationStatus @default(ACTIVE)
+  currentOffer Decimal?          @map("current_offer") @db.Decimal(14, 2)
+  minPrice     Decimal?          @map("min_price") @db.Decimal(14, 2)
+  maxPrice     Decimal?          @map("max_price") @db.Decimal(14, 2)
+  roundNumber  Int               @default(0) @map("round_number")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
 
-  property      Property          @relation(fields: [propertyId], references: [id])
-  buyer         User              @relation("BuyerNegotiations", fields: [buyerId], references: [id])
-  seller        User              @relation("SellerNegotiations", fields: [sellerId], references: [id])
-  offers        Offer[]
-  deals         Deal[]
-  aiLogs        AiLog[]
+  property Property @relation(fields: [propertyId], references: [id])
+  buyer    User     @relation("BuyerNegotiations", fields: [buyerId], references: [id])
+  seller   User     @relation("SellerNegotiations", fields: [sellerId], references: [id])
+  offers   Offer[]
+  deals    Deal[]
+  aiLogs   AiLog[]
 
   @@index([propertyId])
   @@index([buyerId])
@@ -171,7 +174,7 @@ model Offer {
   createdBy     String   @default("AI") @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  negotiation   Negotiation @relation(fields: [negotiationId], references: [id])
+  negotiation Negotiation @relation(fields: [negotiationId], references: [id])
 
   @@index([negotiationId])
   @@map("offers")
@@ -183,15 +186,15 @@ model Deal {
   buyerId       String     @map("buyer_id")
   sellerId      String     @map("seller_id")
   lowerOfficeId String?    @map("lower_office_id")
-  finalPrice    Decimal    @db.Decimal(14, 2) @map("final_price")
+  finalPrice    Decimal    @map("final_price") @db.Decimal(14, 2)
   status        DealStatus @default(PENDING)
   createdAt     DateTime   @default(now()) @map("created_at")
 
-  negotiation   Negotiation @relation(fields: [negotiationId], references: [id])
-  buyer         User        @relation("BuyerDeals", fields: [buyerId], references: [id])
-  seller        User        @relation("SellerDeals", fields: [sellerId], references: [id])
-  lowerOffice   LowerOffice? @relation(fields: [lowerOfficeId], references: [id])
-  payments      Payment[]
+  negotiation Negotiation  @relation(fields: [negotiationId], references: [id])
+  buyer       User         @relation("BuyerDeals", fields: [buyerId], references: [id])
+  seller      User         @relation("SellerDeals", fields: [sellerId], references: [id])
+  lowerOffice LowerOffice? @relation(fields: [lowerOfficeId], references: [id])
+  payments    Payment[]
 
   @@index([negotiationId])
   @@index([buyerId])
@@ -201,21 +204,21 @@ model Deal {
 }
 
 model Payment {
-  id            String        @id @default(uuid())
-  userId        String        @map("user_id")
-  dealId        String        @map("deal_id")
+  id            String          @id @default(uuid())
+  userId        String          @map("user_id")
+  dealId        String          @map("deal_id")
   type          PaymentType
-  amount        Decimal       @db.Decimal(14, 2)
-  fee           Decimal       @db.Decimal(14, 2) @default(0)
+  amount        Decimal         @db.Decimal(14, 2)
+  fee           Decimal         @default(0) @db.Decimal(14, 2)
   provider      PaymentProvider
-  status        PaymentStatus @default(PENDING)
-  transactionId String?       @map("transaction_id")
-  externalId    String?       @map("external_id")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  status        PaymentStatus   @default(PENDING)
+  transactionId String?         @map("transaction_id")
+  externalId    String?         @map("external_id")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
 
-  user          User          @relation(fields: [userId], references: [id])
-  deal          Deal          @relation(fields: [dealId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  deal Deal @relation(fields: [dealId], references: [id])
 
   @@index([userId])
   @@index([dealId])
@@ -225,27 +228,27 @@ model Payment {
 model ListingCredit {
   id        String       @id @default(uuid())
   userId    String       @map("user_id")
-  amount    Decimal      @db.Decimal(14, 2) @default(100)
+  amount    Decimal      @default(100) @db.Decimal(14, 2)
   status    CreditStatus @default(PENDING)
   draftId   String?      @map("draft_id") // set when consumed by a draft
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
-  user      User         @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId, status])
   @@map("listing_credits")
 }
 
 model AiLog {
-  id            String   @id @default(uuid())
-  negotiationId String?  @map("negotiation_id")
+  id            String       @id @default(uuid())
+  negotiationId String?      @map("negotiation_id")
   actionType    AiActionType @map("action_type")
-  message       String?  @db.Text
+  message       String?      @db.Text
   data          Json?
-  createdAt     DateTime @default(now()) @map("created_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
 
-  negotiation   Negotiation? @relation(fields: [negotiationId], references: [id])
+  negotiation Negotiation? @relation(fields: [negotiationId], references: [id])
 
   @@index([negotiationId])
   @@map("ai_logs")
@@ -260,8 +263,8 @@ model Recommendation {
   createdAt  DateTime             @default(now()) @map("created_at")
   updatedAt  DateTime             @updatedAt @map("updated_at")
 
-  property   Property             @relation(fields: [propertyId], references: [id])
-  buyer      User                 @relation(fields: [buyerId], references: [id])
+  property Property @relation(fields: [propertyId], references: [id])
+  buyer    User     @relation(fields: [buyerId], references: [id])
 
   @@unique([propertyId, buyerId])
   @@index([buyerId, status])
@@ -275,8 +278,8 @@ model Favorite {
   propertyId String   @map("property_id")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  user       User     @relation(fields: [userId], references: [id])
-  property   Property @relation(fields: [propertyId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  property Property @relation(fields: [propertyId], references: [id])
 
   @@unique([userId, propertyId])
   @@index([userId])
@@ -297,9 +300,9 @@ model PropertyDraft {
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
-  user        User           @relation(fields: [userId], references: [id])
-  property    Property?      @relation(fields: [propertyId], references: [id])
-  media       PropertyMedia[]
+  user     User            @relation(fields: [userId], references: [id])
+  property Property?       @relation(fields: [propertyId], references: [id])
+  media    PropertyMedia[]
 
   @@index([userId])
   @@index([isCompleted])
@@ -307,15 +310,15 @@ model PropertyDraft {
 }
 
 model PropertyMedia {
-  id         String        @id @default(uuid())
-  draftId    String?       @map("draft_id")
-  propertyId String?       @map("property_id")
+  id         String    @id @default(uuid())
+  draftId    String?   @map("draft_id")
+  propertyId String?   @map("property_id")
   url        String
   type       MediaType
-  createdAt  DateTime      @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
-  draft      PropertyDraft? @relation(fields: [draftId], references: [id])
-  property   Property?      @relation(fields: [propertyId], references: [id])
+  draft    PropertyDraft? @relation(fields: [draftId], references: [id])
+  property Property?      @relation(fields: [propertyId], references: [id])
 
   @@index([draftId])
   @@index([propertyId])
@@ -325,17 +328,18 @@ model PropertyMedia {
 // ─── Location Reference Data ────────────────────────────────────
 
 model Location {
-  id        Int            @id @default(autoincrement())
-  nameAr    String         @map("name_ar") @db.VarChar(100)
-  nameEn    String?        @map("name_en") @db.VarChar(100)
+  id        Int          @id @default(autoincrement())
+  nameAr    String       @map("name_ar") @db.VarChar(100)
+  nameEn    String?      @map("name_en") @db.VarChar(100)
   type      LocationType
-  parentId  Int?           @map("parent_id")
-  sortOrder Int            @default(0) @map("sort_order")
-  isActive  Boolean        @default(true) @map("is_active")
-  createdAt DateTime       @default(now()) @map("created_at")
+  parentId  Int?         @map("parent_id")
+  sortOrder Int          @default(0) @map("sort_order")
+  isActive  Boolean      @default(true) @map("is_active")
+  createdAt DateTime     @default(now()) @map("created_at")
 
-  parent    Location?      @relation("LocationHierarchy", fields: [parentId], references: [id])
-  children  Location[]     @relation("LocationHierarchy")
+  parent           Location?                 @relation("LocationHierarchy", fields: [parentId], references: [id])
+  children         Location[]                @relation("LocationHierarchy")
+  requestLocations PropertyRequestLocation[]
 
   @@index([type, parentId])
   @@index([parentId, isActive])
@@ -345,16 +349,16 @@ model Location {
 // ─── Auth ─────────────────────────────────────────────────────
 
 model OtpCode {
-  id                 String    @id @default(uuid())
-  phone              String
-  code               String
-  attempts           Int       @default(0)
-  expiresAt          DateTime  @map("expires_at")
-  usedAt             DateTime? @map("used_at")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  whatsappMessageId  String?   @map("whatsapp_message_id")
-  deliveryStatus     String?   @map("delivery_status")     // sent | delivered | read | failed
-  deliveryUpdatedAt  DateTime? @map("delivery_updated_at")
+  id                String    @id @default(uuid())
+  phone             String
+  code              String
+  attempts          Int       @default(0)
+  expiresAt         DateTime  @map("expires_at")
+  usedAt            DateTime? @map("used_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  whatsappMessageId String?   @map("whatsapp_message_id")
+  deliveryStatus    String?   @map("delivery_status") // sent | delivered | read | failed
+  deliveryUpdatedAt DateTime? @map("delivery_updated_at")
 
   @@index([phone, createdAt])
   @@map("otp_codes")
@@ -374,8 +378,8 @@ model Conversation {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   expiresAt    DateTime? @map("expires_at")
 
-  user         User?     @relation(fields: [userId], references: [id])
-  listing      Listing?  @relation(fields: [listingId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id])
+  listing Listing? @relation(fields: [listingId], references: [id])
 
   @@index([whatsappId])
   @@index([expiresAt])
@@ -383,18 +387,18 @@ model Conversation {
 }
 
 model Listing {
-  id          String        @id @default(uuid())
-  whatsappId  String        @map("whatsapp_id")
-  userId      String?       @map("user_id")
-  intent      Intent?
-  unitType    UnitType?     @map("unit_type")
-  specs       Json?
-  location    String?
-  price       Decimal?      @db.Decimal(14, 2)
-  mediaUrls   Json?         @map("media_urls")
-  status      ListingStatus @default(DRAFT)
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id         String        @id @default(uuid())
+  whatsappId String        @map("whatsapp_id")
+  userId     String?       @map("user_id")
+  intent     Intent?
+  unitType   UnitType?     @map("unit_type")
+  specs      Json?
+  location   String?
+  price      Decimal?      @db.Decimal(14, 2)
+  mediaUrls  Json?         @map("media_urls")
+  status     ListingStatus @default(DRAFT)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
 
   user          User?          @relation(fields: [userId], references: [id])
   conversations Conversation[]
@@ -419,7 +423,7 @@ model Unit {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  listing    Listing  @relation(fields: [listingId], references: [id])
+  listing Listing @relation(fields: [listingId], references: [id])
 
   @@index([listingId])
   @@index([isActive, intent, unitType])
@@ -571,4 +575,121 @@ enum LocationType {
 enum MediaType {
   IMAGE
   VIDEO
+}
+
+// ─── Buyer / Renter Requests (spec 006) ─────────────────────────
+
+model PropertyRequest {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+
+  intent        PropertyType
+  propertyKind  PropertyKind? @map("property_kind")
+  apartmentType String?       @map("apartment_type")
+
+  minPrice          Decimal? @map("min_price") @db.Decimal(14, 2)
+  maxPrice          Decimal? @map("max_price") @db.Decimal(14, 2)
+  paymentPreference String?  @map("payment_preference")
+  rentRateType      String?  @map("rent_rate_type")
+
+  minBedrooms  Int?     @map("min_bedrooms")
+  maxBedrooms  Int?     @map("max_bedrooms")
+  minBathrooms Int?     @map("min_bathrooms")
+  maxBathrooms Int?     @map("max_bathrooms")
+  minAreaM2    Decimal? @map("min_area_m2") @db.Decimal(10, 2)
+  maxAreaM2    Decimal? @map("max_area_m2") @db.Decimal(10, 2)
+
+  centerLatitude  Decimal? @map("center_latitude") @db.Decimal(10, 8)
+  centerLongitude Decimal? @map("center_longitude") @db.Decimal(11, 8)
+  searchRadiusKm  Decimal? @map("search_radius_km") @db.Decimal(6, 2)
+
+  isFurnished        Boolean? @map("is_furnished")
+  finishingType      String?  @map("finishing_type")
+  floorLevel         String?  @map("floor_level")
+  readiness          String?
+  ownershipType      String?  @map("ownership_type")
+  preferredAmenities Json?    @map("preferred_amenities")
+
+  urgency          RequestUrgency @default(MEDIUM)
+  status           RequestStatus  @default(ACTIVE)
+  notes            String?        @db.Text
+  expiresAt        DateTime?      @map("expires_at")
+  lastMatchedAt    DateTime?      @map("last_matched_at")
+  lastRecomputedAt DateTime?      @map("last_recomputed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user      User                      @relation(fields: [userId], references: [id])
+  locations PropertyRequestLocation[]
+  matches   PropertyMatch[]
+
+  @@index([userId, status])
+  @@index([intent, status])
+  @@index([status, urgency, createdAt])
+  @@index([intent, propertyKind, status])
+  @@map("property_requests")
+}
+
+model PropertyRequestLocation {
+  id         String @id @default(uuid())
+  requestId  String @map("request_id")
+  locationId Int    @map("location_id")
+
+  request  PropertyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  location Location        @relation(fields: [locationId], references: [id])
+
+  @@unique([requestId, locationId])
+  @@index([locationId])
+  @@map("property_request_locations")
+}
+
+model PropertyMatch {
+  id         String @id @default(uuid())
+  requestId  String @map("request_id")
+  propertyId String @map("property_id")
+
+  score         Float
+  priceScore    Float    @map("price_score")
+  locationScore Float    @map("location_score")
+  featureScore  Float    @map("feature_score")
+  distanceKm    Decimal? @map("distance_km") @db.Decimal(8, 2)
+  reasons       Json?
+
+  status         MatchStatus @default(NEW)
+  lastComputedAt DateTime    @default(now()) @map("last_computed_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  request  PropertyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  property Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, propertyId])
+  @@index([requestId, score(sort: Desc)])
+  @@index([propertyId, score(sort: Desc)])
+  @@index([status, lastComputedAt])
+  @@map("property_matches")
+}
+
+enum RequestUrgency {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RequestStatus {
+  ACTIVE
+  PAUSED
+  MATCHED
+  CLOSED
+  EXPIRED
+}
+
+enum MatchStatus {
+  NEW
+  VIEWED
+  CONTACTED
+  DISMISSED
+  CONVERTED
+  CLOSED
 }

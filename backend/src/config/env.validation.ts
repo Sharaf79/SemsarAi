@@ -162,4 +162,15 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   CORS_ORIGINS?: string;
+
+  // ─── Buyer Requests (spec 006) ───────────────────────────
+
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  BUYER_REQUESTS_ENABLED?: boolean;
+
+  @IsString()
+  @IsOptional()
+  INTERNAL_WEBHOOK_SECRET?: string;
 }
