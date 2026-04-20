@@ -5,6 +5,7 @@ import { AuthProvider } from './store/AuthContext';
 import { ChatProvider } from './store/ChatContext';
 import { FavoritesProvider } from './store/FavoritesContext';
 import { HomePage } from './pages/HomePage';
+import { MyRequestsPage } from './pages/MyRequestsPage';
 import { NegotiationPage } from './pages/NegotiationPage';
 import { MockPaymentPage } from './pages/MockPaymentPage';
 import { ListingPaymentPage } from './pages/ListingPaymentPage';
@@ -14,6 +15,7 @@ import { MyListingsPage } from './pages/MyListingsPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { HelpPage } from './pages/HelpPage';
 import { AdminReviewPage } from './pages/AdminReviewPage';
+import { AddPropertyWizardPage } from './pages/PropertyWizard/AddPropertyWizardPage';
 import { ChatWidget } from './components/ChatWidget';
 
 const queryClient = new QueryClient({
@@ -40,6 +42,8 @@ export const App: React.FC = () => {
               <Route path="/listing-payment/:creditId" element={<ListingPaymentPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/my-listings" element={<MyListingsPage />} />
+              <Route path="/properties/add" element={<AddPropertyWizardPage />} />
+              <Route path="/my-requests" element={<MyRequestsPage />} />
               <Route path="/favorites" element={<FavoritesPage />} />
               <Route path="/help" element={<HelpPage />} />
               <Route path="/admin/review" element={<AdminReviewPage />} />

@@ -23,13 +23,31 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
       <div className="header__spacer" />
 
       <div className="header__user">
-        <button 
-          className="btn btn-primary btn-sm" 
+        <button
+          className="btn btn-primary btn-sm"
           onClick={() => openChat('أضيف عقار 🏠')}
           style={{ marginLeft: '12px', background: '#25D366' }}
         >
           اضافة عقار 🏠
         </button>
+
+        <Link
+          to="/properties/add"
+          className="btn btn-primary btn-sm"
+          style={{ marginLeft: '12px', background: '#2563eb' }}
+        >
+          📝 نموذج إضافة
+        </Link>
+
+        {isAuthenticated && (
+          <Link
+            to="/my-requests"
+            className="btn btn-primary btn-sm"
+            style={{ marginLeft: '8px', background: '#4F46E5' }}
+          >
+            🔍 طلباتي
+          </Link>
+        )}
 
         {isAuthenticated && user ? (
           <div className="header__menu-anchor">
