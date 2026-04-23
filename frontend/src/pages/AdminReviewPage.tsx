@@ -207,7 +207,7 @@ export const AdminReviewPage: React.FC = () => {
                         {property.title}
                       </h3>
                       <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>
-                        {formatMoney(property.price as number | null)}
+                        {property.price !== null && property.price !== undefined ? `${property.price} ج.م` : '—'}
                       </div>
                       <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
                         {property.governorate} - {property.city} - {property.district}
@@ -284,7 +284,7 @@ export const AdminReviewPage: React.FC = () => {
                     {selectedProperty.title}
                   </h1>
                   <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--primary)' }}>
-                    {formatMoney(selectedProperty.price as number | null)}
+                    {selectedProperty.price !== null && selectedProperty.price !== undefined ? `${selectedProperty.price} ج.م` : '—'}
                   </div>
                 </div>
 

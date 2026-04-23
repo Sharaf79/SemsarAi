@@ -492,7 +492,7 @@ input, select, textarea { font-family: inherit; }
   transition: transform 0.2s, box-shadow 0.2s;
   display: flex;
   flex-direction: row;
-  height: 280px;
+  min-height: 414px;
 }
 .property-card:hover {
   transform: translateY(-2px);
@@ -527,8 +527,8 @@ input, select, textarea { font-family: inherit; }
   color: var(--text);
   line-height: 1.4;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin-bottom: 4px;
@@ -584,7 +584,8 @@ input, select, textarea { font-family: inherit; }
 .property-card__image-wrap {
   position: relative;
   width: 220px;
-  height: 280px;
+  min-height: 414px;
+  align-self: stretch;
   flex-shrink: 0;
   overflow: hidden;
 }

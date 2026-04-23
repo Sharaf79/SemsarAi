@@ -73,15 +73,15 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onContact,
         </div>
 
         {/* Title */}
-        <h3 className="property-card__title">{property.adTitle || property.title}</h3>
+        <h3 className="property-card__title">{property.adTitle?.trim() || property.title}</h3>
 
         {/* Ad Description excerpt */}
         {property.adDescription && (
           <p style={{
-            fontSize: '13px',
+            fontSize: '8px',
             color: '#666',
             margin: '4px 0 6px',
-            lineHeight: '1.5',
+            lineHeight: '2',
             display: '-webkit-box',
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',

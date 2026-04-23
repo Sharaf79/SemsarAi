@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/AuthContext';
-import { useChatContext } from '../store/ChatContext';
 import { UserMenu } from './UserMenu';
 
 interface HeaderProps {
@@ -10,7 +9,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
   const { isAuthenticated, user } = useAuth();
-  const { openChat } = useChatContext();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -23,9 +22,9 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
       <div className="header__spacer" />
 
       <div className="header__user">
-        <button 
-          className="btn btn-primary btn-sm" 
-          onClick={() => openChat('أضيف عقار 🏠')}
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => navigate('/add-property')}
           style={{ marginLeft: '12px', background: '#25D366' }}
         >
           اضافة عقار 🏠
