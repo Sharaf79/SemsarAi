@@ -7,10 +7,11 @@ import { OnboardingStep } from '@prisma/client';
 // ─── Step Ordering ──────────────────────────────────────────────
 
 export const STEP_ORDER: OnboardingStep[] = [
+  OnboardingStep.PROPERTY_TYPE,
+  OnboardingStep.LISTING_TYPE,
   OnboardingStep.GOVERNORATE,
   OnboardingStep.CITY,
   OnboardingStep.DISTRICT,
-  OnboardingStep.PROPERTY_TYPE,
   OnboardingStep.DETAILS,
   OnboardingStep.PRICE,
   OnboardingStep.MEDIA,
@@ -33,6 +34,13 @@ export function getNextStep(
   }
 
   let next = STEP_ORDER[idx + 1];
+
+  // PROPERTY_TYPE submission already populates listing_type via the combined map,
+  // so the LISTING_TYPE step has nothing to ask — skip it.
+  if (next === OnboardingStep.LISTING_TYPE && data?.listing_type) {
+    const ltIdx = STEP_ORDER.indexOf(OnboardingStep.LISTING_TYPE);
+    next = STEP_ORDER[ltIdx + 1];
+  }
 
   // Dynamic skip: COMMERCIAL/LAND_BUILDING don't have standard apartment details
   const skipDetailsTypes = ['SHOP', 'OFFICE', 'COMMERCIAL', 'LAND_BUILDING'];

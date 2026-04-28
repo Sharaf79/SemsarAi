@@ -92,47 +92,48 @@ export const PropertyPage: React.FC = () => {
 
   return (
     <div className="property-page-container">
-      {/* ── Image Gallery ── */}
-      <section className="pp-gallery" aria-label="معرض الصور">
-        <div className="pp-main-image-wrap">
-          <img src={mainImage} className="pp-main-image" alt={property.adTitle || property.title} />
-
-          {totalImages > 1 && (
-            <>
-              <button className="pp-gallery-nav pp-gallery-nav--prev" onClick={goToPrev} aria-label="الصورة السابقة">‹</button>
-              <button className="pp-gallery-nav pp-gallery-nav--next" onClick={goToNext} aria-label="الصورة التالية">›</button>
-              <span className="pp-image-counter">{activeImageIndex + 1} / {totalImages}</span>
-            </>
-          )}
-
-          <div className="pp-badges">
-            <span className={`pp-badge ${isRent ? 'pp-badge-rent' : 'pp-badge-sale'}`}>
-              {isRent ? 'إيجار' : 'بيع'}
-            </span>
-          </div>
-          <button className="pp-back-btn" onClick={() => navigate('/')} aria-label="العودة للإعلانات">→ العودة للإعلانات</button>
-        </div>
-
-        {totalImages > 1 && (
-          <div className="pp-thumbnails" role="tablist" aria-label="صور مصغرة">
-            {realImages.map((img, idx) => (
-              <button
-                key={img.id}
-                role="tab"
-                aria-selected={idx === activeImageIndex}
-                className={`pp-thumb ${idx === activeImageIndex ? 'active' : ''}`}
-                onClick={() => setActiveImageIndex(idx)}
-              >
-                <img src={img.url} alt={`صورة ${idx + 1} من ${totalImages}`} />
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* ── Top bar with badges & back ── */}
+      <div className="pp-top-bar">
+        <button className="pp-back-btn" onClick={() => navigate('/')} aria-label="العودة للإعلانات">→ العودة للإعلانات</button>
+        <span className={`pp-badge ${isRent ? 'pp-badge-rent' : 'pp-badge-sale'}`}>
+          {isRent ? 'إيجار' : 'بيع'}
+        </span>
+      </div>
 
       <div className="pp-content-layout">
         {/* ── Main Column (Right) ── */}
         <div className="pp-main-col">
+          {/* ── Image Gallery (before location) ── */}
+          <section className="pp-gallery" aria-label="معرض الصور">
+            <div className="pp-main-image-wrap">
+              <img src={mainImage} className="pp-main-image" alt={property.adTitle || property.title} />
+
+              {totalImages > 1 && (
+                <>
+                  <button className="pp-gallery-nav pp-gallery-nav--prev" onClick={goToPrev} aria-label="الصورة السابقة">‹</button>
+                  <button className="pp-gallery-nav pp-gallery-nav--next" onClick={goToNext} aria-label="الصورة التالية">›</button>
+                  <span className="pp-image-counter">{activeImageIndex + 1} / {totalImages}</span>
+                </>
+              )}
+            </div>
+
+            {totalImages > 1 && (
+              <div className="pp-thumbnails" role="tablist" aria-label="صور مصغرة">
+                {realImages.map((img, idx) => (
+                  <button
+                    key={img.id}
+                    role="tab"
+                    aria-selected={idx === activeImageIndex}
+                    className={`pp-thumb ${idx === activeImageIndex ? 'active' : ''}`}
+                    onClick={() => setActiveImageIndex(idx)}
+                  >
+                    <img src={img.url} alt={`صورة ${idx + 1} من ${totalImages}`} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
           <div className="pp-header-info">
             <h1 className="pp-price">
               {property.price && parseFloat(property.price) > 0
@@ -140,6 +141,11 @@ export const PropertyPage: React.FC = () => {
                 : <span className="pp-price-unknown">السعر غير محدد</span>
               }
             </h1>
+            {property.isNegotiable != null && (
+              <span className={`pp-negotiable-badge ${property.isNegotiable ? 'pp-negotiable-yes' : 'pp-negotiable-no'}`}>
+                {property.isNegotiable ? '✅ قابل للتفاوض' : '🚫 غير قابل للتفاوض'}
+              </span>
+            )}
             <h2 className="pp-title">{property.adTitle || property.title}</h2>
             {location && (
               <div className="pp-location">

@@ -5,9 +5,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, ResponseSchema } from '@google/generative-ai';
+import { LlmProvider } from '../llm/llm-provider.interface';
 
 @Injectable()
-export class GeminiService {
+export class GeminiService implements LlmProvider {
   private readonly logger = new Logger(GeminiService.name);
   private readonly genAI: GoogleGenerativeAI;
   private readonly modelName: string;

@@ -252,31 +252,6 @@ export const AdminReviewPage: React.FC = () => {
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
               overflow: 'hidden',
             }}>
-              {/* Media Gallery */}
-              {selectedProperty.media.length > 0 && (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-                  gap: 8,
-                  padding: 16,
-                  background: 'var(--surface-tertiary, #f3f4f6)',
-                }}>
-                  {selectedProperty.media.map((media) => (
-                    <img
-                      key={media.id}
-                      src={media.url}
-                      alt={selectedProperty.title}
-                      style={{
-                        width: '100%',
-                        height: 200,
-                        objectFit: 'cover',
-                        borderRadius: 8,
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-
               <div style={{ padding: 24 }}>
                 {/* Title & Price */}
                 <div style={{ marginBottom: 24 }}>
@@ -324,24 +299,221 @@ export const AdminReviewPage: React.FC = () => {
                         <div style={{ fontWeight: 600 }}>{selectedProperty.propertyKind}</div>
                       </div>
                     )}
-                    {selectedProperty.bedrooms !== null && (
+                    {selectedProperty.bedrooms !== null && selectedProperty.bedrooms !== undefined && (
                       <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>غرف النوم</div>
                         <div style={{ fontWeight: 600 }}>{selectedProperty.bedrooms}</div>
                       </div>
                     )}
-                    {selectedProperty.bathrooms !== null && (
+                    {selectedProperty.bathrooms !== null && selectedProperty.bathrooms !== undefined && (
                       <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>الحمامات</div>
                         <div style={{ fontWeight: 600 }}>{selectedProperty.bathrooms}</div>
                       </div>
                     )}
-                    {selectedProperty.areaM2 !== null && (
+                    {selectedProperty.areaM2 !== null && selectedProperty.areaM2 !== undefined && (
                       <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>المساحة</div>
                         <div style={{ fontWeight: 600 }}>{selectedProperty.areaM2} م²</div>
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* نوع الوحدة */}
+                <div style={{ marginBottom: 24 }}>
+                  <h3 style={{ fontSize: 16, marginBottom: 12 }}>نوع الوحدة والملكية</h3>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gap: 12,
+                  }}>
+                    {selectedProperty.apartmentType && (
+                      <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>نوع الوحدة</div>
+                        <div style={{ fontWeight: 600 }}>{selectedProperty.apartmentType}</div>
+                      </div>
+                    )}
+                    {selectedProperty.ownershipType && (
+                      <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>نوع الملكية</div>
+                        <div style={{ fontWeight: 600 }}>{selectedProperty.ownershipType}</div>
+                      </div>
+                    )}
+                    {selectedProperty.readiness && (
+                      <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>حالة العقار</div>
+                        <div style={{ fontWeight: 600 }}>{selectedProperty.readiness}</div>
+                      </div>
+                    )}
+                    {selectedProperty.finishingType && (
+                      <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>نوع التشطيب</div>
+                        <div style={{ fontWeight: 600 }}>{selectedProperty.finishingType}</div>
+                      </div>
+                    )}
+                    {selectedProperty.floorLevel && (
+                      <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>الطابق</div>
+                        <div style={{ fontWeight: 600 }}>{selectedProperty.floorLevel}</div>
+                      </div>
+                    )}
+                    {selectedProperty.isFurnished !== null && selectedProperty.isFurnished !== undefined && (
+                      <div style={{ background: 'var(--surface-tertiary, #f3f4f6)', padding: 12, borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>هل العقار مفروش؟</div>
+                        <div style={{ fontWeight: 600 }}>{selectedProperty.isFurnished ? 'نعم ✅' : 'لا ❌'}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* عنوان الإعلان ووصف العقار */}
+                {(selectedProperty.adTitle || selectedProperty.adDescription) && (
+                  <div style={{ marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 16, marginBottom: 12 }}>عنوان الإعلان ووصف العقار</h3>
+                    {selectedProperty.adTitle && (
+                      <div style={{
+                        background: 'var(--surface-tertiary, #f3f4f6)',
+                        padding: 16,
+                        borderRadius: 8,
+                        marginBottom: 12,
+                      }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>عنوان الإعلان</div>
+                        <div style={{ fontWeight: 600, fontSize: 16 }}>{selectedProperty.adTitle}</div>
+                      </div>
+                    )}
+                    {selectedProperty.adDescription && (
+                      <div style={{
+                        background: 'var(--surface-tertiary, #f3f4f6)',
+                        padding: 16,
+                        borderRadius: 8,
+                      }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>وصف العقار</div>
+                        <div style={{ color: 'var(--text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                          {selectedProperty.adDescription}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* الكماليات */}
+                {selectedProperty.amenities && Object.keys(selectedProperty.amenities).length > 0 && (
+                  <div style={{ marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 16, marginBottom: 12 }}>الكماليات</h3>
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                    }}>
+                      {Object.entries(selectedProperty.amenities)
+                        .filter(([, value]) => value === true)
+                        .map(([key]) => (
+                          <span
+                            key={key}
+                            style={{
+                              background: 'var(--surface-tertiary, #f3f4f6)',
+                              padding: '6px 14px',
+                              borderRadius: 20,
+                              fontSize: 13,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {key}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* الصور والموقع */}
+                <div style={{ marginBottom: 24 }}>
+                  <h3 style={{ fontSize: 16, marginBottom: 12 }}>📍 الصور والموقع ({selectedProperty.media.length}/10)</h3>
+
+                  {/* 10-slot photo grid */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(5, 1fr)',
+                    gap: 10,
+                    marginBottom: 16,
+                  }}>
+                    {Array.from({ length: 10 }).map((_, idx) => {
+                      const media = selectedProperty.media[idx];
+                      return (
+                        <div key={media?.id ?? `photo-slot-${idx}`} style={{
+                          position: 'relative',
+                          aspectRatio: '1',
+                          borderRadius: 10,
+                          overflow: 'hidden',
+                          border: media ? '2px solid #10b981' : '2px dashed #d1d5db',
+                          background: media ? '#f0fdf4' : 'var(--surface-tertiary, #f9fafb)',
+                          transition: 'transform 0.15s, box-shadow 0.15s',
+                          cursor: media ? 'pointer' : 'default',
+                        }}
+                          onMouseEnter={(e) => { if (media) { e.currentTarget.style.transform = 'scale(1.04)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'; } }}
+                          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}
+                        >
+                          {media ? (
+                            <>
+                              <img
+                                src={media.url}
+                                alt={`صورة العقار ${idx + 1}`}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              />
+                              <div style={{
+                                position: 'absolute', top: 6, right: 6,
+                                background: 'rgba(16, 185, 129, 0.9)', color: '#fff',
+                                fontSize: 11, fontWeight: 700,
+                                minWidth: 22, height: 22, borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                              }}>{idx + 1}</div>
+                              <div style={{
+                                position: 'absolute', bottom: 0, left: 0, right: 0,
+                                background: 'linear-gradient(transparent, rgba(0,0,0,0.4))',
+                                padding: '4px 8px',
+                              }}>
+                                <span style={{ color: '#fff', fontSize: 11, fontWeight: 500 }}>
+                                  صورة {idx + 1}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{
+                              width: '100%', height: '100%',
+                              display: 'flex', flexDirection: 'column',
+                              alignItems: 'center', justifyContent: 'center', gap: 2,
+                            }}>
+                              <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>{idx + 1}</span>
+                              <span style={{ fontSize: 24, color: '#d1d5db', lineHeight: 1 }}>+</span>
+                              <span style={{ fontSize: 10, color: '#d1d5db' }}>فارغ</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* موقع العقار */}
+                  <div style={{
+                    background: 'var(--surface-tertiary, #f3f4f6)',
+                    padding: 16,
+                    borderRadius: 8,
+                  }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>📍 موقع العقار</div>
+                    <div style={{ lineHeight: 1.8 }}>
+                      {selectedProperty.governorate && <div><strong>المحافظة:</strong> {selectedProperty.governorate}</div>}
+                      {selectedProperty.city && <div><strong>المدينة:</strong> {selectedProperty.city}</div>}
+                      {selectedProperty.district && <div><strong>الحي:</strong> {selectedProperty.district}</div>}
+                      {selectedProperty.zone && <div><strong>المنطقة:</strong> {selectedProperty.zone}</div>}
+                      {selectedProperty.street && <div><strong>الشارع:</strong> {selectedProperty.street}</div>}
+                      {selectedProperty.nearestLandmark && <div><strong>أقرب معلم:</strong> {selectedProperty.nearestLandmark}</div>}
+                      {selectedProperty.latitude && selectedProperty.longitude && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                          📌 إحداثيات: {String(selectedProperty.latitude)}, {String(selectedProperty.longitude)}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 

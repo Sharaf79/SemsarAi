@@ -25,7 +25,8 @@ import {
 
 import { NegotiationService } from './negotiation.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { LLM_PROVIDER } from '../llm/llm-provider.interface';
+import { InvoiceExtractorService } from './invoice-extractor.service';
 import { INITIAL_OFFER_FACTOR, MAX_ROUNDS } from './constants/negotiation.constants';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -97,11 +98,18 @@ function makePrisma() {
   return prisma;
 }
 
-/** Build a GeminiService mock that resolves with a polished message by default */
-function makeGemini(): jest.Mocked<GeminiService> {
+/** Build an LLM provider mock that resolves with a polished message by default */
+function makeLlm() {
   return {
-    sendMessage: jest.fn().mockResolvedValue({ message: 'رسالة من Gemini' }),
-  } as unknown as jest.Mocked<GeminiService>;
+    sendMessage: jest.fn().mockResolvedValue({ message: 'رسالة من النموذج' }),
+  };
+}
+
+function makeInvoiceExtractor() {
+  return {
+    extract: jest.fn().mockResolvedValue(null),
+    containsPriceOffer: jest.fn().mockReturnValue(false),
+  };
 }
 
 // ── Test suite ────────────────────────────────────────────────────────────────
@@ -109,17 +117,21 @@ function makeGemini(): jest.Mocked<GeminiService> {
 describe('NegotiationService', () => {
   let service: NegotiationService;
   let prisma:   ReturnType<typeof makePrisma>;
-  let gemini:   jest.Mocked<GeminiService>;
+  let llm:      ReturnType<typeof makeLlm>;
+  // alias kept for Gemini-fallback tests that still reference `gemini`
+  let gemini:   ReturnType<typeof makeLlm>;
 
   beforeEach(async () => {
     prisma = makePrisma();
-    gemini = makeGemini();
+    llm    = makeLlm();
+    gemini = llm; // same mock object
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NegotiationService,
         { provide: PrismaService, useValue: prisma },
-        { provide: GeminiService, useValue: gemini },
+        { provide: LLM_PROVIDER, useValue: llm },
+        { provide: InvoiceExtractorService, useValue: makeInvoiceExtractor() },
       ],
     }).compile();
 

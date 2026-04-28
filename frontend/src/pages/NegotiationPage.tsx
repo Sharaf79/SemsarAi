@@ -1,236 +1,125 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { getNegotiation, handleAction } from '../api/negotiations';
-import { initiatePayment } from '../api/payments';
-import { getOwnerContact } from '../api/properties';
-import type {
-  NegotiationResult,
-  ActionResult,
-  ChatMessage,
-} from '../types/index';
+import React, { useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import { simulateNegotiation } from '../api/negotiations';
+import type { SimulationResult, SimulatorStep } from '../api/negotiations';
+import { fetchPropertyById } from '../api/properties';
+import type { Property } from '../types/index';
 
-type PageState = 'loading' | 'chat' | 'payment' | 'owner' | 'error';
+type Phase = 'input' | 'simulating' | 'result' | 'error';
 
-function formatMoney(val: number | null | undefined): string {
-  if (val == null) return '—';
-  return val.toLocaleString('ar-EG') + ' ج.م';
+function fmt(n: number | null | undefined): string {
+  if (n == null) return '—';
+  return n.toLocaleString('ar-EG') + ' ج.م';
 }
 
-function now(): string {
+function timeNow(): string {
   return new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
 }
+
+const outcomeStyle: Record<
+  SimulatorStep['outcome'],
+  { label: string; color: string; emoji: string }
+> = {
+  INITIAL: { label: 'عرض مبدئي', color: '#0ea5e9', emoji: '👋' },
+  COUNTER: { label: 'عرض مقابل', color: '#f59e0b', emoji: '🔄' },
+  AGREED: { label: 'تم الاتفاق', color: '#10b981', emoji: '✅' },
+  ESCALATE_TO_OWNER: { label: 'إحالة للمالك', color: '#ef4444', emoji: '📢' },
+};
 
 export const NegotiationPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const stateProperty = (location.state as { property?: Property } | null)?.property ?? null;
 
-  const [pageState, setPageState] = useState<PageState>('loading');
-  const [negotiation, setNegotiation] = useState<NegotiationResult | null>(null);
-  const [maxRounds, setMaxRounds] = useState<number>(6);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [showCounterInput, setShowCounterInput] = useState(false);
-  const [counterValue, setCounterValue] = useState('');
+  const [property, setProperty] = useState<Property | null>(stateProperty);
+  const [propertyLoading, setPropertyLoading] = useState(!stateProperty && !!id);
+
+  const [offer, setOffer] = useState('');
+  const [phase, setPhase] = useState<Phase>('input');
   const [errorMsg, setErrorMsg] = useState('');
-
-  // Payment state
-  const [dealId, setDealId] = useState<string | null>(null);
-  const [agreedPrice, setAgreedPrice] = useState<number | null>(null);
-  const [serviceFee, setServiceFee] = useState<number | null>(null);
-  const [paymentLoading, setPaymentLoading] = useState(false);
-
-  // Owner contact state
-  const [ownerPhone, setOwnerPhone] = useState<string | null>(null);
-  const [ownerLoading, setOwnerLoading] = useState(false);
+  const [result, setResult] = useState<SimulationResult | null>(null);
+  const [revealedSteps, setRevealedSteps] = useState<number>(0);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // ── Load negotiation on mount ──────────────────────────────────
+  // Hydrate property if not passed via state
   useEffect(() => {
-    if (!id) { navigate('/'); return; }
-    loadNegotiation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    if (!stateProperty && id) {
+      fetchPropertyById(id)
+        .then(setProperty)
+        .catch(() => setErrorMsg('تعذّر تحميل بيانات العقار'))
+        .finally(() => setPropertyLoading(false));
+    }
+  }, [id, stateProperty]);
 
+  // Auto-scroll on new step reveal
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [revealedSteps, phase]);
 
-  const addMessage = (role: 'ai' | 'user', text: string) => {
-    setMessages((m) => [
-      ...m,
-      { id: Date.now().toString(), role, text, timestamp: new Date() },
-    ]);
-  };
-
-  const loadNegotiation = async () => {
-    try {
-      const res = await getNegotiation(id!);
-      const neg = res.data as unknown as NegotiationResult & {
-        negotiation?: { status: string };
-        offers?: { amount: number; createdBy: string; round: number }[];
-        deals?: { id: string; agreedPrice: number }[];
-      };
-
-      // Handle the verbose getStatus response
-      const actualNeg: NegotiationResult = {
-        negotiationId: (neg as unknown as { negotiation?: { id: string } }).negotiation?.id ?? (neg as NegotiationResult).negotiationId,
-        propertyId: (neg as unknown as { negotiation?: { propertyId: string } }).negotiation?.propertyId ?? (neg as NegotiationResult).propertyId,
-        buyerId: (neg as unknown as { negotiation?: { buyerId: string } }).negotiation?.buyerId ?? (neg as NegotiationResult).buyerId,
-        sellerId: (neg as unknown as { negotiation?: { sellerId: string } }).negotiation?.sellerId ?? (neg as NegotiationResult).sellerId,
-        initialOffer: (neg as unknown as { negotiation?: { initialOffer: number } }).negotiation?.initialOffer ?? (neg as NegotiationResult).initialOffer,
-        minPrice: (neg as unknown as { negotiation?: { minPrice: number } }).negotiation?.minPrice ?? (neg as NegotiationResult).minPrice,
-        maxPrice: (neg as unknown as { negotiation?: { maxPrice: number } }).negotiation?.maxPrice ?? (neg as NegotiationResult).maxPrice,
-        roundNumber: (neg as unknown as { currentRound: number }).currentRound ?? (neg as NegotiationResult).roundNumber,
-        status: ((neg as unknown as { negotiation?: { status: string } }).negotiation?.status ?? (neg as NegotiationResult).status) as NegotiationResult['status'],
-        message: (neg as NegotiationResult).message ?? '',
-      };
-
-      const apiMaxRounds = (neg as unknown as { maxRounds?: number }).maxRounds;
-      if (apiMaxRounds) setMaxRounds(apiMaxRounds);
-
-      setNegotiation(actualNeg);
-
-      // Build chat history from offers
-      const rawOffers = (neg as unknown as { offers?: { amount: number; createdBy: string; round: number }[] }).offers ?? [];
-      const msgs: ChatMessage[] = [];
-
-      // Opening AI message
-      msgs.push({
-        id: 'open',
-        role: 'ai',
-        text: `🤝 بدأت جلسة التفاوض!\n\nالسعر المطلوب: ${formatMoney(actualNeg.maxPrice)}\nعرضك الأول: ${formatMoney(actualNeg.initialOffer)}\n\nانتظر رد المالك أو اختر إجراء…`,
-        timestamp: new Date(),
-      });
-
-      rawOffers.forEach((o, i) => {
-        const isBuyer = o.createdBy === actualNeg.buyerId;
-        msgs.push({
-          id: `offer-${i}`,
-          role: isBuyer ? 'user' : 'ai',
-          text: `${isBuyer ? '💬 عرضك' : '🏠 عرض المالك'}: ${formatMoney(o.amount)}\nالجولة ${o.round}`,
-          timestamp: new Date(),
-        });
-      });
-
-      if (actualNeg.message) {
-        msgs.push({
-          id: 'status-msg',
-          role: 'ai',
-          text: actualNeg.message,
-          timestamp: new Date(),
-        });
+  // Stagger reveal of simulation steps for chat-like feel
+  useEffect(() => {
+    if (phase !== 'result' || !result) return;
+    setRevealedSteps(0);
+    let i = 0;
+    const tick = () => {
+      i += 1;
+      setRevealedSteps(i);
+      if (i < result.steps.length) {
+        setTimeout(tick, 900);
       }
+    };
+    setTimeout(tick, 400);
+  }, [phase, result]);
 
-      setMessages(msgs);
+  const listingPrice = property ? parseFloat(property.price) : 0;
+  const sellerMaxPrice = listingPrice;
+  const sellerMinPrice = Math.round(listingPrice * 0.85);
 
-      // Check if deal already exists
-      const deals = (neg as unknown as { deals?: { id: string; finalPrice: string | number; status: string }[] }).deals ?? [];
-      if (deals.length > 0 || actualNeg.status === 'AGREED') {
-        const deal = deals[0];
-        if (deal?.id) setDealId(deal.id);
-        if (deal?.finalPrice) {
-          const price = Number(deal.finalPrice);
-          setAgreedPrice(price);
-          setServiceFee(price * 0.0025);
-        }
-        // If deal is already CONFIRMED, skip to owner contact
-        if (deal?.status === 'CONFIRMED') {
-          setPageState('owner');
-        } else {
-          setPageState('payment');
-        }
-      } else if (actualNeg.status === 'FAILED') {
-        setPageState('chat'); // Still show chat with FAILED state
-      } else {
-        setPageState('chat');
-      }
-    } catch (_e) {
-      setPageState('error');
-      setErrorMsg('تعذّر تحميل بيانات التفاوض.');
+  const handleStart = async () => {
+    const buyerOffer = parseFloat(offer.replace(/,/g, ''));
+    if (!buyerOffer || buyerOffer <= 0) {
+      setErrorMsg('من فضلك أدخل عرضك');
+      return;
     }
-  };
-
-  // ── Handle negotiation action ──────────────────────────────────
-  const onAction = async (action: 'accept' | 'reject' | 'request_counter') => {
-    if (!id) return;
-    setActionLoading(true);
+    if (!listingPrice) {
+      setErrorMsg('سعر العقار غير متاح');
+      return;
+    }
     setErrorMsg('');
-    setShowCounterInput(false);
-
-    const userText =
-      action === 'accept' ? '✅ وافقت على العرض'
-      : action === 'reject' ? '❌ رفضت العرض'
-      : `🔄 طلبت عرضاً مضاداً`;
-    addMessage('user', userText);
-
+    setPhase('simulating');
     try {
-      const res = await handleAction(id, action);
-      const result = res.data as ActionResult;
-
-      setNegotiation((prev) =>
-        prev ? { ...prev, status: result.status, roundNumber: result.roundNumber } : prev
-      );
-
-      addMessage('ai', result.message);
-
-      if (result.status === 'AGREED' && result.dealId) {
-        setDealId(result.dealId);
-        if (result.finalPrice) setAgreedPrice(result.finalPrice);
-        if (result.fee) setServiceFee(result.fee);
-        setTimeout(() => setPageState('payment'), 800);
-      } else if (result.status === 'FAILED') {
-        // Stay in chat, show failed state
-      }
-    } catch (e: unknown) {
+      const res = await simulateNegotiation(sellerMaxPrice, sellerMinPrice, buyerOffer);
+      setResult(res.data);
+      setPhase('result');
+    } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setErrorMsg(msg ?? 'حدث خطأ في معالجة الإجراء.');
-      addMessage('ai', `⚠️ ${msg ?? 'حدث خطأ. حاول مرة أخرى.'}`);
-    } finally {
-      setActionLoading(false);
+      setErrorMsg(msg ?? 'حدث خطأ في الاتصال بالخادم');
+      setPhase('error');
     }
   };
 
-  // ── Payment ────────────────────────────────────────────────────
-  const handleInitiatePayment = async () => {
-    if (!dealId) return;
-    setPaymentLoading(true);
-    try {
-      const info = await initiatePayment(dealId);
-      // Set fee from backend response
-      if (info.fee) setServiceFee(info.fee);
-      if (info.amount) setAgreedPrice(info.amount);
-      // Navigate to mock payment page
-      navigate(info.paymentUrl);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setErrorMsg(msg ?? 'حدث خطأ في تهيئة الدفع.');
-    } finally {
-      setPaymentLoading(false);
-    }
+  const handleRestart = () => {
+    setResult(null);
+    setRevealedSteps(0);
+    setOffer('');
+    setErrorMsg('');
+    setPhase('input');
   };
 
-  // ── Reveal owner contact ───────────────────────────────────────
-  const handleRevealOwner = async () => {
-    if (!negotiation?.propertyId) return;
-    setOwnerLoading(true);
-    try {
-      const res = await getOwnerContact(negotiation.propertyId);
-      setOwnerPhone(res.ownerPhone);
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setErrorMsg(msg ?? 'تعذّر الحصول على بيانات المالك.');
-    } finally {
-      setOwnerLoading(false);
-    }
-  };
+  // ─── Render ──────────────────────────────────────────────────
 
-  // ── Render ─────────────────────────────────────────────────────
-  const isActive = negotiation?.status === 'ACTIVE';
+  if (propertyLoading) {
+    return (
+      <div className="loading-center">
+        <div className="spinner spinner-lg" />
+      </div>
+    );
+  }
 
   return (
     <div className="neg-page">
-      {/* Header bar */}
       <header className="header">
         <Link to="/" className="header__logo">
           <div className="header__logo-icon">🏠</div>
@@ -238,224 +127,204 @@ export const NegotiationPage: React.FC = () => {
         </Link>
         <div className="header__spacer" />
         <div style={{ fontSize: 14, color: 'var(--text-secondary)', padding: '0 16px' }}>
-          {negotiation && (
+          {result && (
             <span>
-              التفاوض — الجولة{' '}
-              <strong>{negotiation.roundNumber}</strong>
+              الجولة <strong>{Math.min(revealedSteps, result.steps.length)}</strong>
               {' / '}
-              <strong>{maxRounds}</strong>
+              <strong>{result.steps.length}</strong>
             </span>
           )}
         </div>
       </header>
 
-      {/* ── Loading ── */}
-      {pageState === 'loading' && (
-        <div className="loading-center">
+      {/* Property summary */}
+      {property && (
+        <div
+          style={{
+            padding: '12px 16px',
+            background: '#f9fafb',
+            borderBottom: '1px solid #e5e7eb',
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 700 }}>{property.adTitle || property.title}</div>
+            <div style={{ fontSize: 13, color: '#6b7280' }}>
+              السعر المطلوب: {fmt(listingPrice)}
+            </div>
+          </div>
+          {phase === 'result' && result && (
+            <div style={{ fontSize: 12, color: '#6b7280' }}>
+              نطاق المالك: {fmt(result.sellerMinPrice)} ← {fmt(result.sellerMaxPrice)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Phase: input ── */}
+      {phase === 'input' && (
+        <div style={{ padding: 20, maxWidth: 480, margin: '0 auto' }}>
+          <div className="modal__icon" style={{ textAlign: 'center', fontSize: 48, marginBottom: 8 }}>
+            🤝
+          </div>
+          <h2 style={{ textAlign: 'center', marginBottom: 4 }}>ابدأ التفاوض</h2>
+          <p style={{ textAlign: 'center', color: '#6b7280', marginBottom: 20 }}>
+            أدخل عرضك وسيتفاوض الذكاء الاصطناعي نيابةً عن المالك خطوة بخطوة
+          </p>
+
+          {errorMsg && <div className="alert alert-error" style={{ marginBottom: 12 }}>{errorMsg}</div>}
+
+          <div className="form-group">
+            <label className="form-label">عرضك (ج.م) *</label>
+            <input
+              className="form-input"
+              type="number"
+              inputMode="numeric"
+              placeholder={`مثال: ${sellerMinPrice.toLocaleString('ar-EG')}`}
+              value={offer}
+              onChange={(e) => setOffer(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleStart()}
+              style={{ fontSize: 18, fontWeight: 700, direction: 'ltr', textAlign: 'right' }}
+              autoFocus
+            />
+          </div>
+
+          <button
+            className="btn btn-primary btn-full btn-lg"
+            onClick={handleStart}
+            disabled={!offer}
+            style={{ marginTop: 8 }}
+          >
+            🚀 ابدأ التفاوض
+          </button>
+
+          <Link to="/" className="btn btn-ghost btn-full" style={{ marginTop: 8 }}>
+            إلغاء
+          </Link>
+        </div>
+      )}
+
+      {/* ── Phase: simulating ── */}
+      {phase === 'simulating' && (
+        <div className="loading-center" style={{ flexDirection: 'column', gap: 12 }}>
           <div className="spinner spinner-lg" />
+          <div style={{ color: '#6b7280' }}>الذكاء الاصطناعي يتفاوض الآن…</div>
         </div>
       )}
 
-      {/* ── Error ── */}
-      {pageState === 'error' && (
-        <div style={{ padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>😕</div>
-          <p style={{ color: 'var(--danger)', marginBottom: 16 }}>{errorMsg}</p>
-          <Link to="/" className="btn btn-primary">العودة للرئيسية</Link>
-        </div>
-      )}
-
-      {/* ── Chat ── */}
-      {(pageState === 'chat') && (
+      {/* ── Phase: result ── */}
+      {phase === 'result' && result && (
         <>
           <div className="neg-chat-container">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`neg-message neg-message--${m.role === 'ai' ? 'ai' : 'user'}`}
-              >
-                {m.role === 'ai' && <div className="neg-avatar">🤖</div>}
-                <div className={`neg-bubble neg-bubble--${m.role === 'ai' ? 'ai' : 'user'}`}>
-                  {m.text.split('\n').map((line, i) => (
-                    <span key={i}>{line}{i < m.text.split('\n').length - 1 && <br />}</span>
-                  ))}
-                  <div className="neg-bubble__time">{now()}</div>
-                </div>
-                {m.role === 'user' && (
-                  <div className="neg-avatar" style={{ background: '#374151' }}>👤</div>
+            <div className="neg-message neg-message--ai">
+              <div className="neg-avatar">🤖</div>
+              <div className="neg-bubble neg-bubble--ai">
+                🤝 بدأت جلسة تفاوض جديدة!{'\n'}
+                نطاق المالك: {fmt(result.sellerMinPrice)} - {fmt(result.sellerMaxPrice)}{'\n'}
+                جدول التنازل: {result.schedule.map((n) => n.toLocaleString('ar-EG')).join(' ← ')}
+                <div className="neg-bubble__time">{timeNow()}</div>
+              </div>
+            </div>
+
+            {result.steps.slice(0, revealedSteps).map((step) => {
+              const o = outcomeStyle[step.outcome];
+              return (
+                <React.Fragment key={step.round}>
+                  {/* Buyer offer bubble */}
+                  <div className="neg-message neg-message--user">
+                    <div className="neg-bubble neg-bubble--user">
+                      💬 عرضي: {fmt(step.buyerOffer)}{'\n'}
+                      الجولة {step.round}
+                      <div className="neg-bubble__time">{timeNow()}</div>
+                    </div>
+                    <div className="neg-avatar" style={{ background: '#374151' }}>👤</div>
+                  </div>
+
+                  {/* Seller AI response */}
+                  <div className="neg-message neg-message--ai">
+                    <div className="neg-avatar">🏠</div>
+                    <div
+                      className="neg-bubble neg-bubble--ai"
+                      style={{ borderRight: `3px solid ${o.color}` }}
+                    >
+                      <div style={{ fontSize: 12, color: o.color, fontWeight: 700, marginBottom: 4 }}>
+                        {o.emoji} {o.label} • عرض البائع: {fmt(step.sellerOffer)}
+                      </div>
+                      {step.message.split('\n').map((line, i, arr) => (
+                        <span key={i}>
+                          {line}
+                          {i < arr.length - 1 && <br />}
+                        </span>
+                      ))}
+                      <div className="neg-bubble__time">{timeNow()}</div>
+                    </div>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+
+            {revealedSteps >= result.steps.length && (
+              <>
+                {result.finalOutcome === 'AGREED' && (
+                  <div className="neg-status-chip" style={{ background: 'var(--primary)' }}>
+                    ✅ تم الاتفاق على {fmt(result.steps[result.steps.length - 1].sellerOffer)}
+                  </div>
                 )}
-              </div>
-            ))}
-
-            {negotiation?.status === 'FAILED' && (
-              <div className="neg-status-chip">❌ انتهى التفاوض بدون اتفاق</div>
-            )}
-            {negotiation?.status === 'AGREED' && (
-              <div className="neg-status-chip" style={{ background: 'var(--primary)' }}>
-                ✅ تم الاتفاق!
-              </div>
-            )}
-
-            {errorMsg && (
-              <div className="alert alert-error" style={{ margin: '8px 0' }}>{errorMsg}</div>
+                {result.finalOutcome === 'ESCALATE_TO_OWNER' && (
+                  <>
+                    <div className="neg-status-chip" style={{ background: '#ef4444' }}>
+                      📢 وصلنا للحد الأدنى — تم إرسال عرضك للمالك
+                    </div>
+                    {result.ownerNotice && (
+                      <div className="neg-message neg-message--ai">
+                        <div className="neg-avatar">📨</div>
+                        <div
+                          className="neg-bubble neg-bubble--ai"
+                          style={{ borderRight: '3px solid #ef4444', background: '#fef2f2' }}
+                        >
+                          <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 700, marginBottom: 4 }}>
+                            رسالة للمالك
+                          </div>
+                          {result.ownerNotice}
+                          <div className="neg-bubble__time">{timeNow()}</div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
             )}
 
             <div ref={bottomRef} />
           </div>
 
-          {/* Action bar — only when ACTIVE */}
-          {isActive && (
+          {revealedSteps >= result.steps.length && (
             <div className="neg-action-bar">
-              {!showCounterInput ? (
-                <div className="neg-action-bar__buttons">
-                  <button
-                    className="btn btn-primary"
-                    disabled={actionLoading}
-                    onClick={() => onAction('accept')}
-                  >
-                    ✅ قبول
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    disabled={actionLoading}
-                    onClick={() => onAction('reject')}
-                  >
-                    ❌ رفض
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    disabled={actionLoading}
-                    onClick={() => setShowCounterInput(true)}
-                  >
-                    🔄 عرض مضاد
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <div className="neg-action-bar__counter-row">
-                    <input
-                      type="number"
-                      className="neg-action-bar__counter-input"
-                      placeholder="أدخل مبلغ العرض المضاد…"
-                      value={counterValue}
-                      onChange={(e) => setCounterValue(e.target.value)}
-                    />
-                    <button
-                      className="btn btn-primary"
-                      disabled={actionLoading || !counterValue}
-                      onClick={() => onAction('request_counter')}
-                    >
-                      إرسال
-                    </button>
-                    <button
-                      className="btn btn-muted btn-sm"
-                      onClick={() => { setShowCounterInput(false); setCounterValue(''); }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* When AGREED but still on chat page — prompt to go to payment */}
-          {negotiation?.status === 'AGREED' && (
-            <div className="neg-action-bar">
-              <button
-                className="btn btn-primary btn-full btn-lg"
-                onClick={() => setPageState('payment')}
-              >
-                💳 إتمام الدفع لكشف بيانات المالك
-              </button>
-            </div>
-          )}
-
-          {/* When FAILED — prompt to restart */}
-          {negotiation?.status === 'FAILED' && (
-            <div className="neg-action-bar">
-              <Link to="/" className="btn btn-ghost btn-full">
-                🔍 البحث عن عقار آخر
-              </Link>
+              <div className="neg-action-bar__buttons">
+                <button className="btn btn-primary" onClick={handleRestart}>
+                  🔄 جرب عرضاً آخر
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => navigate('/')}
+                >
+                  🏠 العودة للرئيسية
+                </button>
+              </div>
             </div>
           )}
         </>
       )}
 
-      {/* ── Payment step ── */}
-      {pageState === 'payment' && (
-        <div style={{ padding: 20 }}>
-          <div className="payment-step">
-            <div className="payment-step__icon">🤝</div>
-            <div className="payment-step__title">تم الاتفاق!</div>
-            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 12 }}>
-              تحتاج لدفع رسوم الخدمة للحصول على بيانات تواصل المالك
-            </div>
-
-            <div className="payment-step__fee-row">
-              <span className="payment-step__fee-label">سعر الاتفاق</span>
-              <span className="payment-step__fee-amount">
-                {agreedPrice ? formatMoney(agreedPrice) : '—'}
-              </span>
-            </div>
-            <div className="payment-step__fee-row">
-              <span className="payment-step__fee-label">رسوم الخدمة (0.25%)</span>
-              <span className="payment-step__fee-amount">
-                {serviceFee ? formatMoney(serviceFee) : '—'}
-              </span>
-            </div>
-            <p className="payment-step__note">
-              رسوم رمزية تضمن جودة الخدمة • مدفوعة مرة واحدة فقط لهذه الصفقة
-            </p>
-            {errorMsg && <div className="alert alert-error" style={{ marginBottom: 12 }}>{errorMsg}</div>}
-            <button
-              className="btn btn-primary btn-full btn-lg"
-              onClick={handleInitiatePayment}
-              disabled={paymentLoading || !dealId}
-            >
-              {paymentLoading ? <span className="spinner" /> : '💳 ادفع الآن'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Owner contact ── */}
-      {pageState === 'owner' && (
-        <div style={{ padding: 20 }}>
-          <div className="owner-contact">
-            <div className="owner-contact__icon">🎉</div>
-            <div className="owner-contact__title">تم الدفع بنجاح!</div>
-            <div className="owner-contact__sub">
-              يمكنك الآن التواصل مع المالك مباشرةً لإتمام الصفقة
-            </div>
-
-            {!ownerPhone ? (
-              <>
-                {errorMsg && (
-                  <div className="alert alert-error" style={{ marginBottom: 12 }}>{errorMsg}</div>
-                )}
-                <button
-                  className="btn btn-primary btn-full btn-lg"
-                  onClick={handleRevealOwner}
-                  disabled={ownerLoading}
-                  style={{ marginBottom: 12 }}
-                >
-                  {ownerLoading ? <span className="spinner" /> : '📱 اكشف رقم المالك'}
-                </button>
-              </>
-            ) : (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  رقم المالك
-                </div>
-                <div className="owner-contact__phone">{ownerPhone}</div>
-              </div>
-            )}
-
-            <Link to="/" className="btn btn-ghost btn-full">
-              🏠 العودة للرئيسية
-            </Link>
-          </div>
+      {/* ── Phase: error ── */}
+      {phase === 'error' && (
+        <div style={{ padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>😕</div>
+          <p style={{ color: 'var(--danger)', marginBottom: 16 }}>{errorMsg}</p>
+          <button className="btn btn-primary" onClick={handleRestart}>حاول مرة أخرى</button>
         </div>
       )}
     </div>

@@ -40,11 +40,17 @@ export class ScorerService {
   ): { score: number; distanceKm?: number } {
     const names = request.locationNames ?? { governorates: [], cities: [], districts: [] };
 
-    if (property.district && names.districts.includes(property.district)) {
+    // Helpers — a level "matches" if the request doesn't specify it OR the property value is in the list.
+    const govOk = !names.governorates.length || (!!property.governorate && names.governorates.includes(property.governorate));
+    const cityOk = !names.cities.length || (!!property.city && names.cities.includes(property.city));
+
+    // District must match AND its parent city+governorate must also match (prevents cross-city collisions
+    // where different cities share the same district name, e.g. "الحي الأول" in القاهرة vs الجيزة).
+    if (property.district && names.districts.includes(property.district) && cityOk && govOk) {
       reasons.matched.push('same_district');
       return { score: 100 };
     }
-    if (property.city && names.cities.includes(property.city)) {
+    if (property.city && names.cities.includes(property.city) && govOk) {
       reasons.matched.push('same_city');
       return { score: 75 };
     }

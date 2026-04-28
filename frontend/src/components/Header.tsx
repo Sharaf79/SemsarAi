@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../store/AuthContext';
 import { useChatContext } from '../store/ChatContext';
 import { UserMenu } from './UserMenu';
+import CreateRequestModal from './CreateRequestModal';
 
 interface HeaderProps {
   onLoginClick: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
+  const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
   const { openChat } = useChatContext();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
 
   return (
     <header className="header">
@@ -23,20 +26,16 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
       <div className="header__spacer" />
 
       <div className="header__user">
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={() => openChat('أضيف عقار 🏠')}
-          style={{ marginLeft: '12px', background: '#25D366' }}
-        >
-          اضافة عقار 🏠
-        </button>
+          {/* زر محذوف تم حذفه بناءً على طلب المستخدم */}
+
+        {/* زر اضافة عقار تم حذفه بناءً على طلب المستخدم */}
 
         <Link
           to="/properties/add"
           className="btn btn-primary btn-sm"
           style={{ marginLeft: '12px', background: '#2563eb' }}
         >
-          📝 نموذج إضافة
+          المالك
         </Link>
 
         {isAuthenticated && (
@@ -45,7 +44,7 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
             className="btn btn-primary btn-sm"
             style={{ marginLeft: '8px', background: '#4F46E5' }}
           >
-            🔍 طلباتي
+            المشتري/المستأجر
           </Link>
         )}
 
@@ -73,6 +72,15 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
           </button>
         )}
       </div>
+
+      <CreateRequestModal
+        isOpen={showRequestModal}
+        onClose={() => setShowRequestModal(false)}
+        onCreated={() => {
+          setShowRequestModal(false);
+          navigate('/my-requests');
+        }}
+      />
     </header>
   );
 };

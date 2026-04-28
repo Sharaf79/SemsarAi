@@ -85,6 +85,7 @@ export interface User {
   dateOfBirth: string | null;
   sexType: string | null;
   notes: string | null;
+  userType?: 'ADMIN' | 'USER';
 }
 
 export interface AuthState {

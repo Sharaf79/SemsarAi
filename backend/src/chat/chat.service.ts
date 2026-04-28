@@ -83,6 +83,11 @@ export class ChatService {
       return this.buildContext(userId, 'onboarding', resolvedId);
     }
 
+    if (flow === 'search_chat') {
+      // Search chat doesn't need a persistent entity — use a session ID.
+      return this.buildContext(userId, 'search_chat', entityId ?? `search-${userId}-${Date.now()}`);
+    }
+
     // 2. Auto-detect: prefer negotiation over onboarding when both exist.
     const negotiationId = await this.findActiveNegotiationId(userId);
     if (negotiationId) {

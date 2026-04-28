@@ -503,30 +503,102 @@
   margin: 6px 0 0;
 }
 
-.wiz-media-list {
+/* ── Photo Grid (10 slots) ───────────────────────── */
+.wiz-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+@media (max-width: 480px) {
+  .wiz-photo-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.wiz-photo-slot {
+  aspect-ratio: 1;
+  border: 2px dashed #d1d5db;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.15s, background 0.15s;
+  background: #f9fafb;
+}
+
+.wiz-photo-slot--filled {
+  border: 2px solid #10b981;
+  background: #f0fdf4;
+}
+
+.wiz-photo-slot__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.wiz-photo-slot__badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #10b981;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wiz-photo-slot__remove {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(239, 68, 68, 0.85);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.wiz-photo-slot--filled:hover .wiz-photo-slot__remove {
+  opacity: 1;
+}
+
+.wiz-photo-slot__empty {
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.wiz-media-item {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
-  background: #f9fafb;
-  border-radius: 8px;
-  font-size: 14px;
+  justify-content: center;
+  gap: 2px;
 }
 
-.wiz-media-item__remove {
-  background: transparent;
-  border: none;
-  color: #ef4444;
-  cursor: pointer;
-  font-size: 16px;
-  padding: 4px 8px;
+.wiz-photo-slot__number {
+  font-size: 11px;
+  color: #9ca3af;
+  font-weight: 600;
+}
+
+.wiz-photo-slot__plus {
+  font-size: 22px;
+  color: #d1d5db;
+  font-weight: 300;
+  line-height: 1;
 }
 
 /* Loading state */

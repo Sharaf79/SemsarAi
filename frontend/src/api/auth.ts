@@ -12,13 +12,14 @@ export async function sendOtp(phone: string): Promise<{ message: string; channel
 export async function verifyOtp(
   phone: string,
   code: string,
-): Promise<{ token: string; isNewUser: boolean; userId: string; name: string; email: string | null }> {
+): Promise<{ token: string; isNewUser: boolean; userId: string; name: string; email: string | null; userType: string }> {
   const { data } = await apiClient.post<{
     token: string;
     isNewUser: boolean;
     userId: string;
     name: string;
     email: string | null;
+    userType: string;
   }>('/auth/verify-otp', { phone, code });
   return data;
 }

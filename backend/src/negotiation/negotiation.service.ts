@@ -1,12 +1,9 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-  NotFoundException,
-  ConflictException,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeminiService } from '../gemini/gemini.service';
+import type { LlmProvider } from '../llm/llm-provider.interface';
+import { LLM_PROVIDER } from '../llm/llm-provider.interface';
+import { NEGOTIATION_SYSTEM_PROMPT } from '../llm/prompts';
+import { InvoiceExtractorService } from './invoice-extractor.service';
 import {
   NegotiationStatus,
   PropertyStatus,
@@ -29,7 +26,8 @@ export class NegotiationService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly gemini: GeminiService,
+    @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
+    private readonly invoiceExtractor: InvoiceExtractorService,
   ) {}
 
   // ─── T49: startNegotiation ──────────────────────────────────
@@ -381,10 +379,7 @@ export class NegotiationService {
         ...(round !== undefined && { round, maxRounds: MAX_ROUNDS }),
       });
 
-      const systemInstruction =
-        'أنت مساعد تفاوض عقاري مؤدب. مهمتك فقط صياغة رسالة قصيرة بالعامية المصرية المهذبة ' +
-        'بناءً على السياق المُعطى. لا تقترح أسعاراً ولا تتخذ قرارات. ' +
-        'أعد JSON فقط بالشكل: { "message": "..." }';
+      const systemInstruction = NEGOTIATION_SYSTEM_PROMPT;
 
       const responseSchema = {
         type: 'object',
@@ -392,7 +387,7 @@ export class NegotiationService {
         required: ['message'],
       };
 
-      const result = await this.gemini.sendMessage(prompt, systemInstruction, responseSchema);
+      const result = await this.llm.sendMessage(prompt, systemInstruction, responseSchema);
       const geminiMessage = result['message'];
 
       if (typeof geminiMessage === 'string' && geminiMessage.trim().length > 0) {
@@ -436,6 +431,30 @@ export class NegotiationService {
     context: ConversationContext,
     input: string,
   ): Promise<ConversationResponse> {
+    // ── Phase 5: Free-text price offer detection ────────────────
+    // If the message likely contains a price, try to extract it
+    // and include it in the response for the frontend to display.
+    if (this.invoiceExtractor.containsPriceOffer(input)) {
+      const invoice = await this.invoiceExtractor.extract(input);
+      if (invoice) {
+        this.logger.log(
+          `Extracted price offer: ${invoice.offeredPrice} EGP from "${input}"`,
+        );
+        // Still delegate to the normal action flow — the extracted price
+        // is attached as metadata for the frontend to show a price card.
+        const action = this.mapTextToAction(input);
+        const result = await this.handleAction(context.entityId, action);
+
+        return {
+          message: result.message,
+          data: {
+            ...result,
+            extractedOffer: invoice,
+          },
+        };
+      }
+    }
+
     const action = this.mapTextToAction(input);
 
     const result = await this.handleAction(context.entityId, action);

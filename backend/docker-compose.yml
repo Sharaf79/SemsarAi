@@ -21,5 +21,30 @@ services:
       timeout: 5s
       retries: 5
 
+  nlp-service:
+    build:
+      context: ../nlp-service
+      dockerfile: Dockerfile
+    container_name: semsar-nlp
+    restart: unless-stopped
+    ports:
+      - '8001:8001'
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PORT: '8001'
+      # Phase A (stub classifier) — no model loading. Change to 'false' after training.
+      USE_STUB_CLASSIFIER: '${USE_STUB_CLASSIFIER:-true}'
+      MODEL_PATH: /app/model
+      BASE_MODEL: distilbert-base-multilingual-cased
+      CONFIDENCE_FLOOR: '0.55'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8001/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # Uncomment to mount pre-trained model from host (if available)
+    # volumes:
+    #   - ./nlp-service/model:/app/model:ro
+
 volumes:
   mysql_data:

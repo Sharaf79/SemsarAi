@@ -117,7 +117,19 @@ export class RequestsService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: { locations: { include: { location: true } } },
+        include: {
+          locations: {
+            include: {
+              location: {
+                include: {
+                  parent: {
+                    include: { parent: true },
+                  },
+                },
+              },
+            },
+          },
+        },
       }),
       this.prisma.propertyRequest.count({ where }),
     ]);
@@ -128,7 +140,19 @@ export class RequestsService {
   async findOne(userId: string, id: string) {
     const request = await this.prisma.propertyRequest.findUnique({
       where: { id },
-      include: { locations: { include: { location: true } } },
+      include: {
+        locations: {
+          include: {
+            location: {
+              include: {
+                parent: {
+                  include: { parent: true },
+                },
+              },
+            },
+          },
+        },
+      },
     });
     if (!request) throw new NotFoundException(NOT_FOUND_AR);
     if (request.userId !== userId) throw new ForbiddenException(FORBIDDEN_AR);
@@ -221,17 +245,38 @@ export class RequestsService {
   async getMatches(userId: string, requestId: string, query: MatchQuery) {
     await this.assertOwnership(userId, requestId);
 
-    const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    // Resolve request locations → governorate + city name lists, so we can
+    // strictly filter matches to "same governorate AND same city" only.
+    const requestWithLocations = await this.prisma.propertyRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        locations: {
+          include: {
+            location: {
+              include: { parent: { include: { parent: true } } },
+            },
+          },
+        },
+      },
+    });
+    const { governorates, cities } = this.collectLocationLevels(requestWithLocations?.locations ?? []);
+
+    const propertyWhere: Prisma.PropertyWhereInput = { propertyStatus: 'ACTIVE' };
+    if (governorates.length > 0) propertyWhere.governorate = { in: governorates };
+    if (cities.length > 0) propertyWhere.city = { in: cities };
+
     const where: Prisma.PropertyMatchWhereInput = {
       requestId,
       status: { notIn: [MatchStatus.DISMISSED, MatchStatus.CLOSED] },
-      property: { propertyStatus: 'ACTIVE' },
+      property: propertyWhere,
     };
     if (query.minScore != null) where.score = { gte: query.minScore };
 
     const orderBy: Prisma.PropertyMatchOrderByWithRelationInput =
       query.sort === 'date' ? { lastComputedAt: 'desc' } : { score: 'desc' };
+
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.propertyMatch.findMany({
@@ -239,12 +284,40 @@ export class RequestsService {
         orderBy,
         skip: (page - 1) * limit,
         take: limit,
-        include: { property: true },
+        include: {
+          property: {
+            include: { media: { take: 1, orderBy: { createdAt: 'asc' } } },
+          },
+        },
       }),
       this.prisma.propertyMatch.count({ where }),
     ]);
 
     return { items, total, page, limit };
+  }
+
+  /** Walk the location hierarchy and collect governorate + city names. */
+  private collectLocationLevels(
+    rows: Array<{
+      location: {
+        nameAr: string;
+        type: string;
+        parent?: { nameAr: string; type: string; parent?: { nameAr: string; type: string } | null } | null;
+      };
+    }>,
+  ): { governorates: string[]; cities: string[] } {
+    const governorates = new Set<string>();
+    const cities = new Set<string>();
+    const push = (name: string, type: string) => {
+      if (type === 'GOVERNORATE') governorates.add(name);
+      else if (type === 'CITY') cities.add(name);
+    };
+    for (const { location } of rows) {
+      push(location.nameAr, location.type);
+      if (location.parent) push(location.parent.nameAr, location.parent.type);
+      if (location.parent?.parent) push(location.parent.parent.nameAr, location.parent.parent.type);
+    }
+    return { governorates: [...governorates], cities: [...cities] };
   }
 
   async updateMatch(userId: string, matchId: string, dto: UpdateMatchDto) {

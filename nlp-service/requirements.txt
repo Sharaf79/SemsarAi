@@ -1,0 +1,14 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+pydantic-settings==2.4.0
+python-dotenv==1.0.1
+
+# ML stack — CPU only. Pinned tight to keep the hard-contract surface stable.
+torch==2.3.1
+transformers==4.44.2
+tokenizers==0.19.1
+
+# Utilities
+regex==2024.7.24
+rapidfuzz==3.9.6

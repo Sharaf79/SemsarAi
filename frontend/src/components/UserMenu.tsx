@@ -106,12 +106,32 @@ export const UserMenu: React.FC<UserMenuProps> = ({ isOpen, onClose, onLoginClic
 
       <div className="user-menu__divider" />
 
+      {/* My Requests */}
+      <Link to="/my-requests" className="user-menu__item" onClick={onClose}>
+        <span className="user-menu__item-icon">🔍</span>
+        <span>طلباتي</span>
+      </Link>
+
+      <div className="user-menu__divider" />
+
       {/* Favorites — coming soon */}
       <Link to="/favorites" className="user-menu__item" onClick={onClose}>
         <span className="user-menu__item-icon">❤️</span>
         <span>المفضّلة</span>
         <span className="user-menu__badge-soon">قريباً</span>
       </Link>
+
+      {user?.userType === 'ADMIN' && (
+        <>
+          <div className="user-menu__divider" />
+
+          {/* Admin Review */}
+          <Link to="/admin/review" className="user-menu__item" onClick={onClose}>
+            <span className="user-menu__item-icon">🛡️</span>
+            <span>مراجعة الإعلانات</span>
+          </Link>
+        </>
+      )}
 
       <div className="user-menu__divider" />
 

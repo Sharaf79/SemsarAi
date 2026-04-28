@@ -15,6 +15,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { NegotiationService } from './negotiation.service';
+import { NegotiationSimulatorService } from './negotiation-simulator.service';
 import { StartNegotiationDto, HandleActionDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/guards/jwt-auth.guard';
@@ -23,7 +24,37 @@ import type { JwtPayload } from '../auth/guards/jwt-auth.guard';
 export class NegotiationController {
   private readonly logger = new Logger(NegotiationController.name);
 
-  constructor(private readonly negotiationService: NegotiationService) {}
+  constructor(
+    private readonly negotiationService: NegotiationService,
+    private readonly simulator: NegotiationSimulatorService,
+  ) {}
+
+  // ─── POST /negotiations/simulate ───────────────────────────
+
+  /**
+   * Simulate the AI seller-side negotiation against a buyer offer.
+   * Implements the thirds-split descent from sellerMaxPrice down to sellerMinPrice.
+   * If the buyer offer is still below the floor, escalates to the owner.
+   *
+   * Body: { sellerMaxPrice, sellerMinPrice, buyerOffer }
+   */
+  @Post('simulate')
+  @HttpCode(HttpStatus.OK)
+  async simulate(
+    @Body()
+    dto: { sellerMaxPrice: number; sellerMinPrice: number; buyerOffer: number },
+  ) {
+    try {
+      const data = await this.simulator.simulate(
+        Number(dto.sellerMaxPrice),
+        Number(dto.sellerMinPrice),
+        Number(dto.buyerOffer),
+      );
+      return { success: true, data };
+    } catch (error) {
+      this.handleError('POST /simulate', error);
+    }
+  }
 
   // ─── POST /negotiations/start ──────────────────────────────
 

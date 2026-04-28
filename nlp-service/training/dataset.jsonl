@@ -1,0 +1,70 @@
+{"text": "عايز شقة 3 غرف في المعادي تحت مليون", "intent": "search_properties"}
+{"text": "شقة غرفتين للإيجار في مدينة نصر", "intent": "search_properties"}
+{"text": "فيلا للبيع في التجمع الخامس", "intent": "search_properties"}
+{"text": "دوبلكس في الشيخ زايد بسعر مناسب", "intent": "search_properties"}
+{"text": "محل تجاري للإيجار في وسط البلد", "intent": "search_properties"}
+{"text": "مكتب في مصر الجديدة", "intent": "search_properties"}
+{"text": "شاليه في الساحل الشمالي", "intent": "search_properties"}
+{"text": "عايز شقة للبيع في الإسكندرية", "intent": "search_properties"}
+{"text": "عقارات تحت 2 مليون في 6 أكتوبر", "intent": "search_properties"}
+{"text": "شقة 4 غرف في الزمالك", "intent": "search_properties"}
+{"text": "ابحث عن فيلا دوبلكس بحمام سباحة", "intent": "search_properties"}
+{"text": "محتاج اوضتين للإيجار في الدقي", "intent": "search_properties"}
+{"text": "أريد أرض في العاصمة الإدارية", "intent": "search_properties"}
+{"text": "شقة بأسعار متوسطة في حلوان", "intent": "search_properties"}
+{"text": "ايه المتاح بيع في القاهرة الجديدة", "intent": "search_properties"}
+{"text": "apartment for rent in Maadi 3 bedrooms", "intent": "search_properties"}
+{"text": "2br flat for sale in Zamalek under 5M", "intent": "search_properties"}
+{"text": "villa for sale in sheikh zayed", "intent": "search_properties"}
+{"text": "looking for a shop in Nasr City", "intent": "search_properties"}
+{"text": "rent apartment in New Cairo", "intent": "search_properties"}
+{"text": "شقة بين مليون واتنين مليون في فيصل", "intent": "search_properties"}
+{"text": "عقارات تحت 500 ألف", "intent": "search_properties"}
+{"text": "عقار تجاري في الغردقة", "intent": "search_properties"}
+{"text": "شقة تمليك في مدينة الشروق", "intent": "search_properties"}
+{"text": "عايز ايجار في مصر الجديدة", "intent": "search_properties"}
+{"text": "شقة للبيع في شرم الشيخ", "intent": "search_properties"}
+{"text": "منتجع في الغردقة للإيجار الصيفي", "intent": "search_properties"}
+{"text": "ابحث عن محل للبيع في العبور", "intent": "search_properties"}
+{"text": "مكتب صغير للإيجار في المهندسين", "intent": "search_properties"}
+{"text": "فيلا في مدينتي بحمام سباحة وحديقة", "intent": "search_properties"}
+{"text": "بيع شقة ٥ غرف في القاهرة", "intent": "search_properties"}
+{"text": "شقة فاخرة في سموحة الإسكندرية", "intent": "search_properties"}
+{"text": "شقة تشطيب سوبر لوكس في التجمع", "intent": "search_properties"}
+{"text": "عقارات في العلمين الجديدة", "intent": "search_properties"}
+{"text": "شقة بمقدم بسيط في بدر", "intent": "search_properties"}
+{"text": "أراضي للبيع في الفيوم", "intent": "search_properties"}
+{"text": "studio in downtown cairo under 8000", "intent": "search_properties"}
+{"text": "villa with pool in Gouna", "intent": "search_properties"}
+{"text": "حاجة رخيصة في الهرم", "intent": "search_properties"}
+{"text": "شقة للبيع بالقرب من المترو في المعادي", "intent": "search_properties"}
+{"text": "إعلاناتي اللي لسه مش متنشرة", "intent": "search_drafts"}
+{"text": "مسوداتي", "intent": "search_drafts"}
+{"text": "إعلاناتي غير المنشورة", "intent": "search_drafts"}
+{"text": "عرضلي كل الإعلانات اللي عندي مسودة", "intent": "search_drafts"}
+{"text": "my drafts", "intent": "search_drafts"}
+{"text": "show me my unpublished listings", "intent": "search_drafts"}
+{"text": "draft properties I haven't posted yet", "intent": "search_drafts"}
+{"text": "عايز أشوف الإعلانات اللي لسه ما خلصتش", "intent": "search_drafts"}
+{"text": "الإعلانات المحفوظة عندي", "intent": "search_drafts"}
+{"text": "إعلان غير مكتمل", "intent": "search_drafts"}
+{"text": "مسودات عقاراتي", "intent": "search_drafts"}
+{"text": "محتاج أكمل إعلانات قديمة", "intent": "search_drafts"}
+{"text": "where are my saved drafts?", "intent": "search_drafts"}
+{"text": "list my drafts please", "intent": "search_drafts"}
+{"text": "pending listings mine", "intent": "search_drafts"}
+{"text": "عرضلي صور العقار", "intent": "search_media"}
+{"text": "عايز أشوف صور الشقة", "intent": "search_media"}
+{"text": "صور الفيلا", "intent": "search_media"}
+{"text": "عندك فيديو للعقار ده؟", "intent": "search_media"}
+{"text": "photos of the apartment", "intent": "search_media"}
+{"text": "show me pictures of this villa", "intent": "search_media"}
+{"text": "media gallery for property", "intent": "search_media"}
+{"text": "صور من جوه الشقة", "intent": "search_media"}
+{"text": "محتاج أشوف الصور كلها", "intent": "search_media"}
+{"text": "video walkthrough", "intent": "search_media"}
+{"text": "gallery please", "intent": "search_media"}
+{"text": "صور البلكونة والمطبخ", "intent": "search_media"}
+{"text": "images for this listing", "intent": "search_media"}
+{"text": "أريد فيديو للوحدة", "intent": "search_media"}
+{"text": "فيه ألبوم صور؟", "intent": "search_media"}

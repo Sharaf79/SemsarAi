@@ -5,8 +5,15 @@
       "name": "frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5173,
-      "cwd": "frontend"
+      "port": 5174,
+      "cwd": "/Users/sherif/Projects/SemsarAi/frontend"
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:dev"],
+      "port": 3000,
+      "cwd": "backend"
     }
   ]
 }

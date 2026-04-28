@@ -26,6 +26,8 @@ import { FavoritesModule } from './favorites/favorites.module';
 import { ListingCreditsModule } from './listing-credits/listing-credits.module';
 import { AdminModule } from './admin/admin.module';
 import { RequestsModule } from './requests/requests.module';
+import { NlpModule } from './nlp/nlp.module';
+import { SearchChatModule } from './search-chat/search-chat.module';
 
 function validate(config: Record<string, unknown>): EnvironmentVariables {
   const validated = plainToInstance(EnvironmentVariables, config, {
@@ -67,6 +69,8 @@ function validate(config: Record<string, unknown>): EnvironmentVariables {
     ListingCreditsModule,
     AdminModule,
     RequestsModule,
+    NlpModule,
+    SearchChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -4,12 +4,15 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
+    port: 5174,
+    strictPort: true,
     proxy: {
       // All /api/* requests are forwarded to NestJS (strips /api prefix)
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        timeout: 60_000, // LLM-powered endpoints can take 30+ seconds
       },
     },
   },

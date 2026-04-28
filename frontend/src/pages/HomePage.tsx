@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { FiltersSidebar } from '../components/FiltersSidebar';
 import { PropertyGrid } from '../components/PropertyGrid';
 import { AuthModal } from '../components/AuthModal';
-import { StartNegotiationModal } from '../components/StartNegotiationModal';
+import CreateRequestModal from '../components/CreateRequestModal';
 import { useAuth } from '../store/AuthContext';
 import { useChatContext } from '../store/ChatContext';
 import type { Property, PropertyFilters } from '../types/index';
@@ -12,9 +12,11 @@ import type { Property, PropertyFilters } from '../types/index';
 export const HomePage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { openChat } = useChatContext();
+  const navigate = useNavigate();
   const [filters, setFilters] = useState<PropertyFilters>({ sort: 'newest' });
   const [searchParams] = useSearchParams();
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
 
   // Sync URL query params (set by chat search) into the filter state in real-time
   useEffect(() => {
@@ -37,17 +39,15 @@ export const HomePage: React.FC = () => {
       });
     }
   }, [searchParams]);
-  const [isStartNegOpen, setStartNegOpen] = useState(false);
   const [pendingProperty, setPendingProperty] = useState<Property | null>(null);
 
-  // Called when user clicks "تواصل مع المالك" on any card
+  // Called when user clicks "تواصل" on any card
   const handleContact = (property: Property) => {
     if (!isAuthenticated) {
       setPendingProperty(property);
       setAuthModalOpen(true);
     } else {
-      setPendingProperty(property);
-      setStartNegOpen(true);
+      navigate(`/negotiation/${property.id}`, { state: { property } });
     }
   };
 
@@ -58,18 +58,16 @@ export const HomePage: React.FC = () => {
     );
   };
 
-  // After auth success — if there was a pending property, open negotiation modal
+  // After auth success — if there was a pending property, navigate to negotiation
   const handleAuthSuccess = () => {
     setAuthModalOpen(false);
     if (pendingProperty) {
-      setStartNegOpen(true);
+      const p = pendingProperty;
+      setPendingProperty(null);
+      navigate(`/negotiation/${p.id}`, { state: { property: p } });
     }
   };
 
-  const handleStartNegClose = () => {
-    setStartNegOpen(false);
-    setPendingProperty(null);
-  };
 
   return (
     <>
@@ -79,6 +77,66 @@ export const HomePage: React.FC = () => {
       <div className="hero">
         <h1 className="hero__title">ابحث عن عقارك المثالي 🏠</h1>
         <p className="hero__sub">آلاف العقارات في مصر — سمسار AI يتفاوض بدلاً عنك</p>
+
+        {/* Role-selection buttons */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 12,
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            margin: '20px 0 24px',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              if (!isAuthenticated) {
+                setAuthModalOpen(true);
+                return;
+              }
+              navigate('/my-listings');
+            }}
+            style={{
+              background: '#10b981',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 12,
+              padding: '14px 32px',
+              fontSize: 16,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+            }}
+          >
+            🏠 المالك
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!isAuthenticated) {
+                setAuthModalOpen(true);
+                return;
+              }
+              setShowRequestModal(true);
+            }}
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 12,
+              padding: '14px 32px',
+              fontSize: 16,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              boxShadow: '0 4px 14px rgba(59, 130, 246, 0.35)',
+            }}
+          >
+            🔍 المشتري / المستأجر
+          </button>
+        </div>
 
         <div className="search-bar">
           <input
@@ -119,6 +177,12 @@ export const HomePage: React.FC = () => {
         <PropertyGrid filters={filters} onContact={handleContact} onChat={handleChat} />
       </div>
 
+      {/* Main layout: sidebar + grid */}
+      <div className="main-layout">
+        <FiltersSidebar filters={filters} onChange={setFilters} />
+        <PropertyGrid filters={filters} onContact={handleContact} onChat={handleChat} />
+      </div>
+
       {/* Auth modal */}
       {isAuthModalOpen && (
         <AuthModal
@@ -130,11 +194,12 @@ export const HomePage: React.FC = () => {
         />
       )}
 
-      {/* Start negotiation modal */}
-      {isStartNegOpen && pendingProperty && (
-        <StartNegotiationModal
-          property={pendingProperty}
-          onClose={handleStartNegClose}
+      {/* Create request modal */}
+      {showRequestModal && (
+        <CreateRequestModal
+          isOpen={showRequestModal}
+          onClose={() => setShowRequestModal(false)}
+          onCreated={() => setShowRequestModal(false)}
         />
       )}
     </>

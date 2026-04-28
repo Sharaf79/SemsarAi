@@ -163,6 +163,20 @@ export class EnvironmentVariables {
   @IsOptional()
   CORS_ORIGINS?: string;
 
+  // ─── LLM Provider ────────────────────────────────────────
+
+  @IsString()
+  @IsOptional()
+  LLM_PROVIDER?: string;
+
+  @IsString()
+  @IsOptional()
+  OLLAMA_BASE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  OLLAMA_MODEL?: string;
+
   // ─── Buyer Requests (spec 006) ───────────────────────────
 
   @IsBoolean()

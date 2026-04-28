@@ -36,6 +36,7 @@ export interface DraftData {
     finishingType?: string | null;
     floorLevel?: string | null;
     isFurnished?: boolean | null;
+    isNegotiable?: boolean | null;
     adTitle?: string | null;
     adDescription?: string | null;
     amenities?: { parsed?: string } | null;

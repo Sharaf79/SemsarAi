@@ -85,7 +85,7 @@ export interface TransitionResult {
  * shared across the onboarding and negotiation flows.
  */
 export type ConversationChannel = 'app' | 'whatsapp';
-export type ActiveFlow = 'onboarding' | 'negotiation';
+export type ActiveFlow = 'onboarding' | 'negotiation' | 'search_chat';
 
 export interface ConversationContext {
   /** The platform user ID */

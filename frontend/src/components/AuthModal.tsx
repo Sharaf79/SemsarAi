@@ -121,6 +121,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
           dateOfBirth: null,
           sexType: null,
           notes: null,
+          userType: res.userType as 'ADMIN' | 'USER',
         });
         onSuccess?.();
         onClose();
@@ -151,6 +152,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose, onSuccess }) => {
         dateOfBirth: user.dateOfBirth ?? null,
         sexType: user.sexType ?? null,
         notes: user.notes ?? null,
+        userType: user.userType,
       });
       onSuccess?.();
       onClose();

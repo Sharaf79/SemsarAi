@@ -157,6 +157,41 @@ export async function submitOnboardingAnswer(userId: string, step: string, answe
   return adaptOnboardingResponse(data);
 }
 
+export interface SearchFilters {
+  type?: string;
+  kind?: string;
+  governorate?: string;
+  city?: string;
+  bedrooms?: number;
+  maxPrice?: number;
+}
+
+export interface HistoryEntry {
+  role: 'user' | 'bot';
+  text: string;
+}
+
+export interface SearchChatApiResponse {
+  message: string;
+  properties?: unknown[];
+  filters?: SearchFilters;
+}
+
+export async function sendSearchChatMessage(
+  message: string,
+  history?: HistoryEntry[],
+  previousFilters?: SearchFilters,
+): Promise<SearchChatApiResponse> {
+  const userId = getOrCreateAnonId();
+  const { data } = await apiClient.post<SearchChatApiResponse>('/search-chat/message', {
+    message,
+    userId,
+    ...(history && history.length > 0 ? { history } : {}),
+    ...(previousFilters && Object.keys(previousFilters).length > 0 ? { previousFilters } : {}),
+  });
+  return data;
+}
+
 export async function finalSubmitOnboarding(userId: string): Promise<ChatApiResponse> {
   const { data } = await apiClient.post<{ success: boolean; data: unknown }>('/onboarding/submit', { userId });
   if (data.success) {

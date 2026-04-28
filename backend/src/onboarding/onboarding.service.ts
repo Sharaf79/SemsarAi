@@ -108,7 +108,7 @@ export class OnboardingService {
       const draft = await tx.propertyDraft.create({
         data: {
           userId: uid,
-          currentStep: OnboardingStep.GOVERNORATE,
+          currentStep: STEP_ORDER[0],
           data: {},
           isCompleted: false,
         },
@@ -426,7 +426,7 @@ export class OnboardingService {
       'city_name',
       'district_id',
       'district_name',
-      'price',
+      // price is now optional
     ];
     const missingFields: string[] = [];
 

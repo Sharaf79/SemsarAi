@@ -25,6 +25,12 @@ describe('OnboardingService — Location Flow', () => {
       },
       property: { create: jest.fn() },
       propertyMedia: { create: jest.fn(), updateMany: jest.fn() },
+      location: { count: jest.fn().mockResolvedValue(1) },
+      listingCredit: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'credit-1', status: 'COMPLETED' }),
+        create: jest.fn().mockResolvedValue({ id: 'credit-new' }),
+        update: jest.fn().mockResolvedValue({ id: 'credit-1' }),
+      },
       $transaction: jest.fn((fn: any) => fn(prisma)),
     };
 

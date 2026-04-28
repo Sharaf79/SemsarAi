@@ -133,6 +133,7 @@ export class AuthService {
     userId: string;
     name: string;
     email: string | null;
+    userType: string;
   }> {
     const normalised = this.normalisePhone(phone);
 
@@ -197,17 +198,17 @@ export class AuthService {
     const token = this.jwtService.sign(payload);
 
     this.logger.log(`Auth OK — user=${user.id} isNew=${isNewUser}`);
-    return { token, isNewUser, userId: user.id, name: user.name, email: user.email ?? null };
+    return { token, isNewUser, userId: user.id, name: user.name, email: user.email ?? null, userType: user.userType };
   }
 
   // ─── GET /auth/profile ────────────────────────────────────────
 
   async getProfile(
     userId: string,
-  ): Promise<{ id: string; phone: string; name: string; email: string | null; dateOfBirth: string | null; sexType: string | null; notes: string | null }> {
+  ): Promise<{ id: string; phone: string; name: string; email: string | null; dateOfBirth: string | null; sexType: string | null; notes: string | null; userType: string }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, phone: true, name: true, email: true, dateOfBirth: true, sexType: true, notes: true },
+      select: { id: true, phone: true, name: true, email: true, dateOfBirth: true, sexType: true, notes: true, userType: true },
     });
     if (!user) throw new NotFoundException('User not found');
     return {
@@ -238,7 +239,7 @@ export class AuthService {
         ...(sexType !== undefined ? { sexType: sexType || null } : {}),
         ...(notes !== undefined ? { notes: notes || null } : {}),
       },
-      select: { id: true, name: true, email: true, phone: true, dateOfBirth: true, sexType: true, notes: true },
+      select: { id: true, name: true, email: true, phone: true, dateOfBirth: true, sexType: true, notes: true, userType: true },
     });
 
     return {

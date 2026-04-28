@@ -16,6 +16,7 @@ import { FavoritesPage } from './pages/FavoritesPage';
 import { HelpPage } from './pages/HelpPage';
 import { AdminReviewPage } from './pages/AdminReviewPage';
 import { AddPropertyWizardPage } from './pages/PropertyWizard/AddPropertyWizardPage';
+import { SearchChatPage } from './pages/SearchChatPage';
 import { ChatWidget } from './components/ChatWidget';
 
 const queryClient = new QueryClient({
@@ -44,6 +45,7 @@ export const App: React.FC = () => {
               <Route path="/my-listings" element={<MyListingsPage />} />
               <Route path="/properties/add" element={<AddPropertyWizardPage />} />
               <Route path="/my-requests" element={<MyRequestsPage />} />
+              <Route path="/search-chat" element={<SearchChatPage />} />
               <Route path="/favorites" element={<FavoritesPage />} />
               <Route path="/help" element={<HelpPage />} />
               <Route path="/admin/review" element={<AdminReviewPage />} />

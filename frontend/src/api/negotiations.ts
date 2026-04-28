@@ -1,6 +1,37 @@
 import { apiClient } from './client';
 import type { NegotiationResult, ActionResult, NegotiationAction } from '../types';
 
+export type SimulatorOutcome = 'INITIAL' | 'COUNTER' | 'AGREED' | 'ESCALATE_TO_OWNER';
+
+export interface SimulatorStep {
+  round: number;
+  sellerOffer: number;
+  buyerOffer: number;
+  outcome: SimulatorOutcome;
+  message: string;
+}
+
+export interface SimulationResult {
+  sellerMaxPrice: number;
+  sellerMinPrice: number;
+  schedule: number[];
+  steps: SimulatorStep[];
+  finalOutcome: SimulatorOutcome;
+  ownerNotice?: string;
+}
+
+export async function simulateNegotiation(
+  sellerMaxPrice: number,
+  sellerMinPrice: number,
+  buyerOffer: number,
+): Promise<{ success: boolean; data: SimulationResult }> {
+  const { data } = await apiClient.post<{ success: boolean; data: SimulationResult }>(
+    '/negotiations/simulate',
+    { sellerMaxPrice, sellerMinPrice, buyerOffer },
+  );
+  return data;
+}
+
 export async function startNegotiation(
   propertyId: string,
   buyerMaxPrice: number,

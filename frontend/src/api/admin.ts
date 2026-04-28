@@ -16,6 +16,23 @@ export interface AdminProperty {
   propertyStatus: string;
   createdAt: string;
   updatedAt: string;
+
+  // Extended fields
+  apartmentType: string | null;
+  ownershipType: string | null;
+  finishingType: string | null;
+  floorLevel: string | null;
+  isFurnished: boolean | null;
+  readiness: string | null;
+  amenities: Record<string, boolean> | null;
+  adTitle: string | null;
+  adDescription: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  street: string | null;
+  zone: string | null;
+  nearestLandmark: string | null;
+
   user: {
     id: string;
     name: string;
