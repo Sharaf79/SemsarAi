@@ -50,6 +50,8 @@ model Property {
   title           String
   description     String?        @db.Text
   price           Decimal?       @db.Decimal(14, 2)
+  minPrice        Decimal?       @map("min_price") @db.Decimal(14, 2)
+  maxPrice        Decimal?       @map("max_price") @db.Decimal(14, 2)
   type            PropertyType
   propertyKind    PropertyKind?  @map("property_kind")
   bedrooms        Int?
@@ -153,17 +155,35 @@ model Negotiation {
   createdAt    DateTime          @default(now()) @map("created_at")
   updatedAt    DateTime          @updatedAt @map("updated_at")
 
-  property Property @relation(fields: [propertyId], references: [id])
-  buyer    User     @relation("BuyerNegotiations", fields: [buyerId], references: [id])
-  seller   User     @relation("SellerNegotiations", fields: [sellerId], references: [id])
-  offers   Offer[]
-  deals    Deal[]
-  aiLogs   AiLog[]
+  property    Property                @relation(fields: [propertyId], references: [id])
+  buyer       User                    @relation("BuyerNegotiations", fields: [buyerId], references: [id])
+  seller      User                    @relation("SellerNegotiations", fields: [sellerId], references: [id])
+  offers      Offer[]
+  deals       Deal[]
+  aiLogs      AiLog[]
+  escalations NegotiationEscalation[]
 
   @@index([propertyId])
   @@index([buyerId])
   @@index([sellerId])
   @@map("negotiations")
+}
+
+model NegotiationEscalation {
+  id            String    @id @default(uuid())
+  negotiationId String    @map("negotiation_id")
+  buyerOffer    Decimal   @map("buyer_offer") @db.Decimal(14, 2)
+  token         String    @unique
+  sellerAction  String?   @map("seller_action") // ACCEPT | REJECT | COUNTER
+  sellerCounter Decimal?  @map("seller_counter") @db.Decimal(14, 2)
+  status        String    @default("PENDING") // PENDING | RESOLVED
+  createdAt     DateTime  @default(now()) @map("created_at")
+  resolvedAt    DateTime? @map("resolved_at")
+
+  negotiation Negotiation @relation(fields: [negotiationId], references: [id])
+
+  @@index([negotiationId])
+  @@map("negotiation_escalations")
 }
 
 model Offer {

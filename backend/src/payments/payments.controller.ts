@@ -42,6 +42,25 @@ export class PaymentsController {
     return this.paymentsService.initiatePayment(dto.dealId, user.sub);
   }
 
+  // ─── POST /payments/initiate-deposit ──────────────────────────
+
+  /**
+   * Create a fixed 100 EGP DEPOSIT payment for a deal.
+   * Used by the negotiation flow to unlock the owner's contact.
+   */
+  @Post('initiate-deposit')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(JwtAuthGuard)
+  async initiateDeposit(
+    @Body() dto: InitiatePaymentDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    this.logger.debug(
+      `POST /payments/initiate-deposit — deal=${dto.dealId} user=${user.sub}`,
+    );
+    return this.paymentsService.initiateDeposit(dto.dealId, user.sub);
+  }
+
   // ─── POST /payments/callback/:paymentId ──────────────────────
 
   /**

@@ -24,6 +24,11 @@ export const Step2Pricing: React.FC<Step2PricingProps> = ({
 }) => {
   const [rentRateType, setRentRateType] = useState('');
   const [priceInput, setPriceInput] = useState('');
+  // Optional negotiation band (SALE only) — used by the AI negotiation engine
+  // to decide IN_BAND / BELOW_MIN / ABOVE_MAX when buyers propose a price.
+  const [minPriceInput, setMinPriceInput] = useState('');
+  const [maxPriceInput, setMaxPriceInput] = useState('');
+  const [bandTouched, setBandTouched] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isRental = draft?.data.listing_type === 'RENT';
@@ -56,7 +61,29 @@ export const Step2Pricing: React.FC<Step2PricingProps> = ({
     if (data.price) {
       setPriceInput(data.price.toString());
     }
+    if (data.minPrice !== undefined && data.minPrice !== null) {
+      setMinPriceInput(String(data.minPrice));
+      setBandTouched(true);
+    }
+    if (data.maxPrice !== undefined && data.maxPrice !== null) {
+      setMaxPriceInput(String(data.maxPrice));
+      setBandTouched(true);
+    }
   }, [draft]);
+
+  // Auto-suggest band defaults (±10%) once the user enters a price.
+  // Only fires for SALE listings and only if the user hasn't typed a custom band yet.
+  useEffect(() => {
+    if (!isSale || bandTouched) return;
+    const cleaned = Number(priceInput.replace(/,/g, ''));
+    if (!cleaned || isNaN(cleaned) || cleaned <= 0) {
+      setMinPriceInput('');
+      setMaxPriceInput('');
+      return;
+    }
+    setMinPriceInput(String(Math.round(cleaned * 0.9)));
+    setMaxPriceInput(String(Math.round(cleaned * 1.1)));
+  }, [priceInput, isSale, bandTouched]);
 
   const handleContinue = async () => {
     const newErrors: Record<string, string> = {};
@@ -71,6 +98,31 @@ export const Step2Pricing: React.FC<Step2PricingProps> = ({
       return;
     }
 
+    // Validate negotiation band (SALE only, both fields are optional)
+    const parseBand = (v: string): number | null => {
+      const trimmed = v.trim();
+      if (!trimmed) return null;
+      const n = Number(trimmed.replace(/,/g, ''));
+      return isNaN(n) || n <= 0 ? NaN : n;
+    };
+    const minVal = isSale ? parseBand(minPriceInput) : null;
+    const maxVal = isSale ? parseBand(maxPriceInput) : null;
+    if (Number.isNaN(minVal as number)) newErrors.minPrice = 'الحد الأدنى يجب أن يكون رقماً موجباً';
+    if (Number.isNaN(maxVal as number)) newErrors.maxPrice = 'الحد الأقصى يجب أن يكون رقماً موجباً';
+    if (
+      typeof minVal === 'number' &&
+      typeof maxVal === 'number' &&
+      !Number.isNaN(minVal) &&
+      !Number.isNaN(maxVal) &&
+      minVal > maxVal
+    ) {
+      newErrors.maxPrice = 'الحد الأقصى يجب أن يكون أكبر من الحد الأدنى';
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
     setErrors({});
 
     try {
@@ -80,14 +132,18 @@ export const Step2Pricing: React.FC<Step2PricingProps> = ({
         // For now, just track it
       }
 
-      // Submit price (or skip)
-      const price = priceInput.trim();
-      if (price) {
-        await submitAnswer('PRICE', price);
-      } else {
-        // Skip price
-        await submitAnswer('PRICE', 0);
+      // Submit price (with optional negotiation band for SALE listings)
+      const priceStr = priceInput.trim();
+      const payload: { price: string | number; minPrice?: number; maxPrice?: number } = {
+        price: priceStr || 0,
+      };
+      if (isSale) {
+        if (typeof minVal === 'number' && !Number.isNaN(minVal)) payload.minPrice = minVal;
+        if (typeof maxVal === 'number' && !Number.isNaN(maxVal)) payload.maxPrice = maxVal;
       }
+
+      // Backend `validatePrice` accepts either a raw value or {price, minPrice, maxPrice}
+      await submitAnswer('PRICE', payload);
 
       onNext();
     } catch (err) {
@@ -204,6 +260,72 @@ export const Step2Pricing: React.FC<Step2PricingProps> = ({
 
         {errors.price && <p className="text-red-600 text-sm">{errors.price}</p>}
       </div>
+
+      {/* Negotiation Band — SALE only */}
+      {isSale && (
+        <div className="space-y-4 border-t pt-8">
+          <div>
+            <label className="block text-lg font-semibold text-gray-900 mb-1">
+              نطاق التفاوض
+              <span className="text-gray-500 text-sm mr-2">(اختياري)</span>
+            </label>
+            <p className="text-sm text-gray-600">
+              لو حضرتك مستعد للتفاوض، حدد أقل سعر تقبله وأقصى سعر تتوقعه. لو سابتها فاضية، النظام
+              هيستخدم نطاق ±10٪ من السعر المعلن.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                أقل سعر تقبله
+              </label>
+              <input
+                type="text"
+                value={minPriceInput}
+                onChange={(e) => {
+                  setMinPriceInput(e.target.value);
+                  setBandTouched(true);
+                  setErrors((prev) => ({ ...prev, minPrice: '' }));
+                }}
+                placeholder="مثلاً: 450000"
+                className={`w-full px-4 py-3 rounded-lg border-2 font-medium text-right ${
+                  errors.minPrice
+                    ? 'border-red-300 bg-red-50'
+                    : 'border-gray-200 bg-white focus:border-blue-600 focus:outline-none'
+                }`}
+              />
+              {errors.minPrice && (
+                <p className="text-red-600 text-xs mt-1">{errors.minPrice}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                أقصى سعر تتوقعه
+              </label>
+              <input
+                type="text"
+                value={maxPriceInput}
+                onChange={(e) => {
+                  setMaxPriceInput(e.target.value);
+                  setBandTouched(true);
+                  setErrors((prev) => ({ ...prev, maxPrice: '' }));
+                }}
+                placeholder="مثلاً: 550000"
+                className={`w-full px-4 py-3 rounded-lg border-2 font-medium text-right ${
+                  errors.maxPrice
+                    ? 'border-red-300 bg-red-50'
+                    : 'border-gray-200 bg-white focus:border-blue-600 focus:outline-none'
+                }`}
+              />
+              {errors.maxPrice && (
+                <p className="text-red-600 text-xs mt-1">{errors.maxPrice}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Info Box */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

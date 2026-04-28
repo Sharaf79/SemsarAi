@@ -22,9 +22,20 @@ describe('OnboardingService — Location Flow', () => {
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        delete: jest.fn(),
       },
       property: { create: jest.fn() },
       propertyMedia: { create: jest.fn(), updateMany: jest.fn() },
+      // Default: a COMPLETED listing credit exists so finalSubmit's payment guard passes.
+      // Tests that need to assert the no-credit path can override.
+      listingCredit: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'credit-1' }),
+        create: jest.fn().mockResolvedValue({ id: 'credit-new' }),
+        update: jest.fn().mockResolvedValue({ id: 'credit-1' }),
+      },
+      // Used by validators that count rows (e.g. district lookups)
+      location: { count: jest.fn().mockResolvedValue(1) },
+      user: { findUnique: jest.fn(), create: jest.fn() },
       $transaction: jest.fn((fn: any) => fn(prisma)),
     };
 
@@ -61,27 +72,28 @@ describe('OnboardingService — Location Flow', () => {
       expect(STEP_ORDER).not.toContain('LOCATION');
     });
 
-    it('should have correct order: LISTING_TYPE → GOVERNORATE → CITY → DISTRICT → DETAILS', () => {
-      const ltIdx = STEP_ORDER.indexOf(OnboardingStep.LISTING_TYPE);
+    it('should have correct order: GOVERNORATE → CITY → DISTRICT → PROPERTY_TYPE → DETAILS', () => {
       const govIdx = STEP_ORDER.indexOf(OnboardingStep.GOVERNORATE);
       const cityIdx = STEP_ORDER.indexOf(OnboardingStep.CITY);
       const distIdx = STEP_ORDER.indexOf(OnboardingStep.DISTRICT);
+      const ptIdx = STEP_ORDER.indexOf(OnboardingStep.PROPERTY_TYPE);
       const detIdx = STEP_ORDER.indexOf(OnboardingStep.DETAILS);
 
-      expect(govIdx).toBe(ltIdx + 1);
+      expect(govIdx).toBe(0);
       expect(cityIdx).toBe(govIdx + 1);
       expect(distIdx).toBe(cityIdx + 1);
-      expect(detIdx).toBe(distIdx + 1);
+      expect(ptIdx).toBe(distIdx + 1);
+      expect(detIdx).toBe(ptIdx + 1);
+    });
+
+    it('should not include LISTING_TYPE in the active sequence', () => {
+      // LISTING_TYPE was retired from STEP_ORDER — it's now derived from
+      // property kind selection during DETAILS / collected ad-hoc instead.
+      expect(STEP_ORDER).not.toContain(OnboardingStep.LISTING_TYPE);
     });
   });
 
   describe('getNextStep', () => {
-    it('should advance LISTING_TYPE → GOVERNORATE', () => {
-      expect(getNextStep(OnboardingStep.LISTING_TYPE)).toBe(
-        OnboardingStep.GOVERNORATE,
-      );
-    });
-
     it('should advance GOVERNORATE → CITY', () => {
       expect(getNextStep(OnboardingStep.GOVERNORATE)).toBe(
         OnboardingStep.CITY,
@@ -94,16 +106,30 @@ describe('OnboardingService — Location Flow', () => {
       );
     });
 
-    it('should advance DISTRICT → DETAILS for non-SHOP', () => {
+    it('should advance DISTRICT → PROPERTY_TYPE', () => {
+      expect(getNextStep(OnboardingStep.DISTRICT)).toBe(
+        OnboardingStep.PROPERTY_TYPE,
+      );
+    });
+
+    it('should advance PROPERTY_TYPE → DETAILS for APARTMENT', () => {
       expect(
-        getNextStep(OnboardingStep.DISTRICT, { property_type: 'APARTMENT' }),
+        getNextStep(OnboardingStep.PROPERTY_TYPE, { property_type: 'APARTMENT' }),
       ).toBe(OnboardingStep.DETAILS);
     });
 
-    it('should skip DETAILS → PRICE for SHOP (from DISTRICT)', () => {
+    it('should skip DETAILS → PRICE for SHOP (from PROPERTY_TYPE)', () => {
       expect(
-        getNextStep(OnboardingStep.DISTRICT, { property_type: 'SHOP' }),
+        getNextStep(OnboardingStep.PROPERTY_TYPE, { property_type: 'SHOP' }),
       ).toBe(OnboardingStep.PRICE);
+    });
+
+    it('should skip DETAILS → PRICE for OFFICE / COMMERCIAL / LAND_BUILDING too', () => {
+      for (const kind of ['OFFICE', 'COMMERCIAL', 'LAND_BUILDING']) {
+        expect(
+          getNextStep(OnboardingStep.PROPERTY_TYPE, { property_type: kind }),
+        ).toBe(OnboardingStep.PRICE);
+      }
     });
   });
 
@@ -299,10 +325,14 @@ describe('OnboardingService — Location Flow', () => {
         district_id: 55,
         district_name: 'الحي الأول', // DB name
       });
-      expect(updateCall.data.currentStep).toBe(OnboardingStep.DETAILS);
+      // DISTRICT now advances to PROPERTY_TYPE (which then routes to DETAILS or PRICE
+      // based on the kind selected). Property kind is collected AFTER location.
+      expect(updateCall.data.currentStep).toBe(OnboardingStep.PROPERTY_TYPE);
     });
 
-    it('should skip DETAILS → PRICE for SHOP property', async () => {
+    it('should still advance to PROPERTY_TYPE even for pre-seeded SHOP property', async () => {
+      // The skip-DETAILS rule fires at PROPERTY_TYPE→next (not at DISTRICT→next),
+      // so SHOP still has to traverse PROPERTY_TYPE first.
       prisma.propertyDraft.findFirst.mockResolvedValue({
         ...baseDraft,
         data: { ...baseDraft.data, property_type: 'SHOP' },
@@ -319,7 +349,7 @@ describe('OnboardingService — Location Flow', () => {
       );
 
       const updateCall = prisma.propertyDraft.update.mock.calls[0][0];
-      expect(updateCall.data.currentStep).toBe(OnboardingStep.PRICE);
+      expect(updateCall.data.currentStep).toBe(OnboardingStep.PROPERTY_TYPE);
     });
 
     it('should reject if city not yet selected', async () => {
@@ -550,26 +580,29 @@ describe('OnboardingService — Location Flow', () => {
       }));
     });
 
-    it('should clear city, district, details, price, media when editing GOVERNORATE', async () => {
+    it('should clear everything from GOVERNORATE forward when editing GOVERNORATE', async () => {
       const result = await service.editField('user-1', OnboardingStep.GOVERNORATE);
 
       const updateCall = prisma.propertyDraft.update.mock.calls[0][0];
       const savedData = updateCall.data.data as Record<string, unknown>;
 
-      // Should preserve: property_type, listing_type
-      expect(savedData.property_type).toBe('APARTMENT');
-      expect(savedData.listing_type).toBe('SALE');
-
-      // Should have cleared: governorate and everything after
+      // GOVERNORATE is at index 0 in the current STEP_ORDER, so clearing
+      // "from this step forward" wipes location + property_type + details + price + media.
+      // (PROPERTY_TYPE moved to after DISTRICT in the production flow, so it gets cleared too.)
       expect(savedData.governorate_id).toBeUndefined();
       expect(savedData.governorate_name).toBeUndefined();
       expect(savedData.city_id).toBeUndefined();
       expect(savedData.city_name).toBeUndefined();
       expect(savedData.district_id).toBeUndefined();
       expect(savedData.district_name).toBeUndefined();
+      expect(savedData.property_type).toBeUndefined();
       expect(savedData.details).toBeUndefined();
       expect(savedData.price).toBeUndefined();
       expect(savedData.media_skipped).toBeUndefined();
+
+      // listing_type is tracked under the PROPERTY_TYPE step's clear-list and
+      // PROPERTY_TYPE sits after GOVERNORATE in STEP_ORDER, so it gets cleared too.
+      expect(savedData.listing_type).toBeUndefined();
 
       // Should have rewound to GOVERNORATE
       expect(updateCall.data.currentStep).toBe(OnboardingStep.GOVERNORATE);
@@ -619,6 +652,59 @@ describe('OnboardingService — Location Flow', () => {
       await expect(
         service.editField('user-1', OnboardingStep.GOVERNORATE),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ─── validatePrice (negotiation band shape) ─────────────────
+  describe('validatePrice — negotiation band', () => {
+    // The validator is private; access via cast for focused unit coverage.
+    const call = (answer: unknown) =>
+      (service as unknown as {
+        validatePrice: (a: unknown, d: Record<string, unknown>) => Record<string, unknown>;
+      }).validatePrice(answer, {});
+
+    it('accepts the legacy raw-number shape and returns nullable band', () => {
+      expect(call(500000)).toEqual({ price: 500000, minPrice: null, maxPrice: null });
+    });
+
+    it('accepts comma-formatted strings', () => {
+      expect(call('1,250,000')).toEqual({ price: 1250000, minPrice: null, maxPrice: null });
+    });
+
+    it('treats 0 as null price', () => {
+      expect(call(0).price).toBeNull();
+    });
+
+    it('accepts the {price, minPrice, maxPrice} object shape', () => {
+      expect(call({ price: 1000000, minPrice: 900000, maxPrice: 1100000 })).toEqual({
+        price: 1000000,
+        minPrice: 900000,
+        maxPrice: 1100000,
+      });
+    });
+
+    it('rejects when minPrice > maxPrice', () => {
+      expect(() => call({ price: 1000000, minPrice: 1200000, maxPrice: 1100000 })).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('rejects when price < minPrice', () => {
+      expect(() => call({ price: 800000, minPrice: 900000, maxPrice: 1100000 })).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('rejects when price > maxPrice', () => {
+      expect(() => call({ price: 1500000, minPrice: 900000, maxPrice: 1100000 })).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('rejects negative numbers anywhere in the band', () => {
+      expect(() => call({ price: 1000000, minPrice: -1, maxPrice: 1100000 })).toThrow(
+        BadRequestException,
+      );
     });
   });
 });

@@ -509,7 +509,7 @@ export class OnboardingService {
       [STEP_ORDER.indexOf(OnboardingStep.CITY)]: ['city_id', 'city_name'],
       [STEP_ORDER.indexOf(OnboardingStep.DISTRICT)]: ['district_id', 'district_name'],
       [STEP_ORDER.indexOf(OnboardingStep.DETAILS)]: ['details'],
-      [STEP_ORDER.indexOf(OnboardingStep.PRICE)]: ['price'],
+      [STEP_ORDER.indexOf(OnboardingStep.PRICE)]: ['price', 'minPrice', 'maxPrice'],
       [STEP_ORDER.indexOf(OnboardingStep.MEDIA)]: ['media_skipped'],
     };
 
@@ -604,6 +604,8 @@ export class OnboardingService {
           userId,
           title: `${kindAr} ${typeAr}`,
           price: (data.price as number) ?? null,
+          minPrice: (data.minPrice as number) ?? null,
+          maxPrice: (data.maxPrice as number) ?? null,
           type,
           propertyKind,
           isPaid,
@@ -1003,23 +1005,62 @@ export class OnboardingService {
   }
 
   private validatePrice(answer: unknown, currentData: Record<string, unknown>): Record<string, unknown> {
-    let price = Number(String(answer).replace(/,/g, ''));
+    // Accept either:
+    //   • legacy raw number/string  →  treated as `price` only
+    //   • object shape { price, minPrice?, maxPrice? }  →  used for SALE listings
+    //     where the seller wants to set a negotiation band (T-voice-phase).
 
-    if (isNaN(price) && typeof answer === 'string') {
-      const allMaps = [SALE_PRICE_MAP, RENT_PRICE_MAP, RENT_DAILY_PRICE_MAP, RENT_ANNUAL_PRICE_MAP];
-      for (const map of allMaps) {
-        if (map[answer.trim()] !== undefined) {
-          price = map[answer.trim()];
-          break;
+    const isObjectShape =
+      typeof answer === 'object' &&
+      answer !== null &&
+      !Array.isArray(answer) &&
+      ('price' in (answer as Record<string, unknown>) ||
+        'minPrice' in (answer as Record<string, unknown>) ||
+        'maxPrice' in (answer as Record<string, unknown>));
+
+    const rawPrice = isObjectShape
+      ? (answer as Record<string, unknown>).price
+      : answer;
+    const rawMin = isObjectShape
+      ? (answer as Record<string, unknown>).minPrice
+      : undefined;
+    const rawMax = isObjectShape
+      ? (answer as Record<string, unknown>).maxPrice
+      : undefined;
+
+    const parseNumeric = (input: unknown, allowMaps: boolean): number | null => {
+      if (input === null || input === undefined || input === '') return null;
+      let n = Number(String(input).replace(/,/g, ''));
+      if (isNaN(n) && allowMaps && typeof input === 'string') {
+        const maps = [SALE_PRICE_MAP, RENT_PRICE_MAP, RENT_DAILY_PRICE_MAP, RENT_ANNUAL_PRICE_MAP];
+        for (const map of maps) {
+          if (map[input.trim()] !== undefined) {
+            n = map[input.trim()];
+            break;
+          }
         }
       }
+      if (isNaN(n) || n < 0) {
+        throw new BadRequestException('Price must be a positive number');
+      }
+      return n === 0 ? null : n;
+    };
+
+    const price = parseNumeric(rawPrice, true);
+    const minPrice = parseNumeric(rawMin, false);
+    const maxPrice = parseNumeric(rawMax, false);
+
+    if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) {
+      throw new BadRequestException('minPrice cannot exceed maxPrice');
+    }
+    if (price !== null && minPrice !== null && price < minPrice) {
+      throw new BadRequestException('price must be ≥ minPrice');
+    }
+    if (price !== null && maxPrice !== null && price > maxPrice) {
+      throw new BadRequestException('price must be ≤ maxPrice');
     }
 
-    if (isNaN(price) || price < 0) {
-      throw new BadRequestException('Price must be a positive number');
-    }
-
-    return { price: price === 0 ? null : price };
+    return { price, minPrice, maxPrice };
   }
 
   private validateMedia(_answer: unknown): Record<string, unknown> {

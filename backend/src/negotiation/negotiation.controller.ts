@@ -15,7 +15,13 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { NegotiationService } from './negotiation.service';
-import { StartNegotiationDto, HandleActionDto } from './dto';
+import {
+  StartNegotiationDto,
+  HandleActionDto,
+  ChatDto,
+  ProposePriceDto,
+  SellerActionDto,
+} from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/guards/jwt-auth.guard';
 
@@ -139,6 +145,78 @@ export class NegotiationController {
       };
     } catch (error) {
       this.handleError('GET /:id/history', error);
+    }
+  }
+
+  // ─── POST /negotiations/chat ───────────────────────────────
+
+  @Post('chat')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async chat(@Body() dto: ChatDto) {
+    try {
+      this.logger.debug(`POST /chat — negotiation ${dto.negotiationId}`);
+      const data = await this.negotiationService.chatWithGemma(
+        dto.negotiationId,
+        dto.history ?? [],
+        dto.userMessage,
+      );
+      return { success: true, data };
+    } catch (error) {
+      this.handleError('POST /chat', error);
+    }
+  }
+
+  // ─── POST /negotiations/propose-price ──────────────────────
+
+  @Post('propose-price')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async proposePrice(@Body() dto: ProposePriceDto) {
+    try {
+      this.logger.debug(
+        `POST /propose-price — negotiation ${dto.negotiationId}, price ${dto.proposedPrice}`,
+      );
+      const data = await this.negotiationService.proposePrice(
+        dto.negotiationId,
+        dto.proposedPrice,
+      );
+      return { success: true, data };
+    } catch (error) {
+      this.handleError('POST /propose-price', error);
+    }
+  }
+
+  // ─── GET /negotiations/seller-action/:token ───────────────
+
+  @Get('seller-action/:token')
+  @HttpCode(HttpStatus.OK)
+  async getSellerEscalation(@Param('token') token: string) {
+    try {
+      const data = await this.negotiationService.getEscalationByToken(token);
+      return { success: true, data };
+    } catch (error) {
+      this.handleError('GET /seller-action/:token', error);
+    }
+  }
+
+  // ─── POST /negotiations/seller-action/:token ──────────────
+
+  @Post('seller-action/:token')
+  @HttpCode(HttpStatus.OK)
+  async submitSellerAction(
+    @Param('token') token: string,
+    @Body() dto: SellerActionDto,
+  ) {
+    try {
+      const data = await this.negotiationService.applySellerAction(
+        token,
+        dto.action,
+        dto.counterPrice,
+      );
+      return { success: true, data };
+    } catch (error) {
+      this.handleError('POST /seller-action/:token', error);
     }
   }
 

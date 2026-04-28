@@ -48,6 +48,10 @@ export interface Property {
   propertyStatus: PropertyStatus;
   createdAt: string;
   media: PropertyMedia[];
+
+  /** Negotiation band — only populated when the request is from the owner. */
+  minPrice?: string | null;
+  maxPrice?: string | null;
 }
 
 export interface PropertiesMeta {

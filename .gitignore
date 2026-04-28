@@ -31,3 +31,4 @@ npm-debug.log*
 
 # Prisma
 backend/generated/
+frontend/tsconfig.tsbuildinfo

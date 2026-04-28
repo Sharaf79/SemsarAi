@@ -11,7 +11,9 @@ describe('OnboardingService — startOrResumeDraft', () => {
       propertyDraft: {
         findFirst: jest.fn(),
         create: jest.fn(),
+        delete: jest.fn(),
       },
+      user: { findUnique: jest.fn(), create: jest.fn() },
       $transaction: jest.fn((fn: any) => fn(prisma)),
     };
 
@@ -29,7 +31,7 @@ describe('OnboardingService — startOrResumeDraft', () => {
     prisma.propertyDraft.create.mockResolvedValue({
       id: 'draft-1',
       userId: 'user-1',
-      currentStep: OnboardingStep.PROPERTY_TYPE,
+      currentStep: OnboardingStep.GOVERNORATE,
       data: {},
       isCompleted: false,
     });
@@ -42,13 +44,13 @@ describe('OnboardingService — startOrResumeDraft', () => {
     expect(prisma.propertyDraft.create).toHaveBeenCalledWith({
       data: {
         userId: 'user-1',
-        currentStep: OnboardingStep.PROPERTY_TYPE,
+        currentStep: OnboardingStep.GOVERNORATE,
         data: {},
         isCompleted: false,
       },
     });
     expect(result.id).toBe('draft-1');
-    expect(result.currentStep).toBe(OnboardingStep.PROPERTY_TYPE);
+    expect(result.currentStep).toBe(OnboardingStep.GOVERNORATE);
   });
 
   it('should return existing draft if found', async () => {
@@ -76,7 +78,7 @@ describe('OnboardingService — startOrResumeDraft', () => {
     prisma.propertyDraft.create.mockResolvedValue({
       id: 'draft-new',
       userId: 'user-1',
-      currentStep: OnboardingStep.PROPERTY_TYPE,
+      currentStep: OnboardingStep.GOVERNORATE,
       data: {},
       isCompleted: false,
     });
@@ -85,6 +87,6 @@ describe('OnboardingService — startOrResumeDraft', () => {
 
     expect(prisma.propertyDraft.create).toHaveBeenCalled();
     expect(result.isCompleted).toBe(false);
-    expect(result.currentStep).toBe(OnboardingStep.PROPERTY_TYPE);
+    expect(result.currentStep).toBe(OnboardingStep.GOVERNORATE);
   });
 });

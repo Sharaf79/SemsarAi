@@ -2,7 +2,7 @@
 
 **Source**: [Plan](specs/000-master-plan/plan.md) · [Specification](/.claude/commands/speckit.specify.md) · [Constitution](/.claude/commands/speckit.constitution.md)
 **Stack**: NestJS 11 · Prisma 6.x · MySQL · Gemini 2.5 Flash · FastAPI (Chat UI)
-**Total Tasks**: 74 (T01–T48 Phase 1, T49–T74 Phase 2)
+**Total Tasks**: 74 + 12 voice-chat extension = 86 (T01–T48 Phase 1, T49–T74 Phase 2, V01–V12 Sprint 2.4)
 
 ---
 
@@ -120,25 +120,25 @@
 
 **Goal**: Wire HTTP endpoints to service methods. Validate input with class-validator DTOs.
 
-- [ ] T21 Create `src/onboarding/dto/start-onboarding.dto.ts` — `{ userId: string }` with `@IsUUID()`
+- [x] T21 Create `src/onboarding/dto/start-onboarding.dto.ts` — `{ userId: string }` with `@IsUUID()`
 
-- [ ] T22 Create `src/onboarding/dto/submit-answer.dto.ts` — `{ userId: string, step: OnboardingStep, answer: any }` with `@IsUUID()`, `@IsEnum(OnboardingStep)`, `@IsNotEmpty()`
+- [x] T22 Create `src/onboarding/dto/submit-answer.dto.ts` — `{ userId: string, step: OnboardingStep, answer: any }` with `@IsUUID()`, `@IsEnum(OnboardingStep)`, `@IsNotEmpty()`
 
-- [ ] T23 Create `src/onboarding/dto/question-response.dto.ts` — interface: `{ step: OnboardingStep, question: string, inputType: string, options?: string[], fields?: FieldDef[] }`
+- [x] T23 Create `src/onboarding/dto/question-response.dto.ts` — interface: `{ step: OnboardingStep, question: string, inputType: string, options?: string[], fields?: FieldDef[] }`
 
-- [ ] T24 Create `src/onboarding/dto/review-response.dto.ts` — interface: `{ draft: PropertyDraft, data: Record<string, any>, isComplete: boolean, missingFields: string[] }`
+- [x] T24 Create `src/onboarding/dto/review-response.dto.ts` — interface: `{ draft: PropertyDraft, data: Record<string, any>, isComplete: boolean, missingFields: string[] }`
 
-- [ ] T25 Implement `POST /onboarding/start` in `src/onboarding/onboarding.controller.ts` — body: StartOnboardingDto → call `startOrResumeDraft(userId)` → return draft (201)
+- [x] T25 Implement `POST /onboarding/start` in `src/onboarding/onboarding.controller.ts` — body: StartOnboardingDto → call `startOrResumeDraft(userId)` → return draft (201)
 
-- [ ] T26 Implement `GET /onboarding/question` in `src/onboarding/onboarding.controller.ts` — query param: `userId` → call `getCurrentQuestion(userId)` → return QuestionResponse (200)
+- [x] T26 Implement `GET /onboarding/question` in `src/onboarding/onboarding.controller.ts` — query param: `userId` → call `getCurrentQuestion(userId)` → return QuestionResponse (200)
 
-- [ ] T27 Implement `POST /onboarding/answer` in `src/onboarding/onboarding.controller.ts` — body: SubmitAnswerDto → call `submitAnswer(userId, step, answer)` → return updated draft (200)
+- [x] T27 Implement `POST /onboarding/answer` in `src/onboarding/onboarding.controller.ts` — body: SubmitAnswerDto → call `submitAnswer(userId, step, answer)` → return updated draft (200)
 
-- [ ] T28 Implement `GET /onboarding/review` in `src/onboarding/onboarding.controller.ts` — query param: `userId` → call `getReview(userId)` → return ReviewResponse (200)
+- [x] T28 Implement `GET /onboarding/review` in `src/onboarding/onboarding.controller.ts` — query param: `userId` → call `getReview(userId)` → return ReviewResponse (200)
 
-- [ ] T29 Implement `POST /onboarding/submit` in `src/onboarding/onboarding.controller.ts` — body: `{ userId }` → call `finalSubmit(userId)` → return Property (201)
+- [x] T29 Implement `POST /onboarding/submit` in `src/onboarding/onboarding.controller.ts` — body: `{ userId }` → call `finalSubmit(userId)` → return Property (201)
 
-- [ ] T30 Implement `POST /onboarding/upload-media` in `src/onboarding/onboarding.controller.ts` — body: `{ userId, url, type }` → call `uploadMedia(userId, url, type)` → return PropertyMedia (201)
+- [x] T30 Implement `POST /onboarding/upload-media` in `src/onboarding/onboarding.controller.ts` — body: `{ userId, url, type }` → call `uploadMedia(userId, url, type)` → return PropertyMedia (201)
 
 **Checkpoint**: All 6 endpoints callable via curl/Postman. Validation rejects bad input with 400. 404 on missing drafts.
 
@@ -148,31 +148,31 @@
 
 **Goal**: Full test coverage for onboarding service and controller.
 
-- [ ] T31 Unit test: `startOrResumeDraft` in `src/onboarding/onboarding.service.spec.ts` — 3 cases: new user creates draft, existing incomplete draft resumes, completed draft creates new one
+- [x] T31 Unit test: `startOrResumeDraft` in `src/onboarding/onboarding.service.spec.ts` — 3 cases: new user creates draft, existing incomplete draft resumes, completed draft creates new one
 
-- [ ] T32 Unit test: `getCurrentQuestion` — 8 cases: each OnboardingStep returns correct Arabic text, inputType, options/fields matching ONBOARDING_QUESTIONS constant
+- [x] T32 Unit test: `getCurrentQuestion` — 8 cases: each OnboardingStep returns correct Arabic text, inputType, options/fields matching ONBOARDING_QUESTIONS constant
 
-- [ ] T33 Unit test: `submitAnswer` valid flows — 7 cases: one per answerable step (PROPERTY_TYPE through MEDIA). Verify answer merged into data, currentStep advanced
+- [x] T33 Unit test: `submitAnswer` valid flows — 7 cases: one per answerable step (PROPERTY_TYPE through MEDIA). Verify answer merged into data, currentStep advanced
 
-- [ ] T34 Unit test: `submitAnswer` invalid flows — 6+ cases: wrong step (400), invalid property_type, invalid listing_type, missing governorate, negative price, bad area. Each throws appropriate error
+- [x] T34 Unit test: `submitAnswer` invalid flows — 6+ cases: wrong step (400), invalid property_type, invalid listing_type, missing governorate, negative price, bad area. Each throws appropriate error
 
-- [ ] T35 Unit test: step validation helpers — individual tests for each validator: validatePropertyType (4 valid Arabic + invalid), validateListingType (2 valid + invalid), validateLocation (with/without governorate), validateDetails (with/without required fields per property kind), validatePrice (positive, zero, negative, NaN)
+- [x] T35 Unit test: step validation helpers — individual tests for each validator: validatePropertyType (4 valid Arabic + invalid), validateListingType (2 valid + invalid), validateLocation (with/without governorate), validateDetails (with/without required fields per property kind), validatePrice (positive, zero, negative, NaN)
 
-- [ ] T36 Unit test: `getReview` — 3 cases: complete data → isComplete=true, missing price → isComplete=false + missingFields=["price"], empty data → all fields missing
+- [x] T36 Unit test: `getReview` — 3 cases: complete data → isComplete=true, missing price → isComplete=false + missingFields=["price"], empty data → all fields missing
 
-- [ ] T37 Unit test: `editField` — 3 cases: from REVIEW → set to LOCATION → verify currentStep changed, from non-REVIEW → reject (400), edit to COMPLETED → reject (400)
+- [x] T37 Unit test: `editField` — 3 cases: from REVIEW → set to LOCATION → verify currentStep changed, from non-REVIEW → reject (400), edit to COMPLETED → reject (400)
 
-- [ ] T38 Unit test: `finalSubmit` — 4 cases: all fields present → Property created + media transferred + draft completed, missing required field → reject (400), draft not at REVIEW → reject (400), verify Prisma transaction used
+- [x] T38 Unit test: `finalSubmit` — 4 cases: all fields present → Property created + media transferred + draft completed, missing required field → reject (400), draft not at REVIEW → reject (400), verify Prisma transaction used
 
-- [ ] T39 Unit test: `uploadMedia` — 3 cases: valid IMAGE → created, valid VIDEO → created, invalid type → reject
+- [x] T39 Unit test: `uploadMedia` — 3 cases: valid IMAGE → created, valid VIDEO → created, invalid type → reject
 
-- [ ] T40 Unit test: Controller — 6 endpoint tests: each returns correct status code, validation pipe catches bad DTOs (missing userId, bad step enum), 404 on no active draft
+- [x] T40 Unit test: Controller — 6 endpoint tests: each returns correct status code, validation pipe catches bad DTOs (missing userId, bad step enum), 404 on no active draft
 
-- [ ] T41 E2E test: Full onboarding flow in `test/onboarding.e2e-spec.ts` — POST /start → GET /question (PROPERTY_TYPE) → POST /answer (شقة) → GET /question (LISTING_TYPE) → POST /answer (بيع) → ... through all steps → GET /review → POST /submit → verify Property exists in DB with correct fields
+- [x] T41 E2E test: Full onboarding flow in `test/onboarding.e2e-spec.ts` — POST /start → GET /question (PROPERTY_TYPE) → POST /answer (شقة) → GET /question (LISTING_TYPE) → POST /answer (بيع) → ... through all steps → GET /review → POST /submit → verify Property exists in DB with correct fields
 
-- [ ] T42 E2E test: Resume interrupted flow — POST /start → answer 3 steps → new POST /start (same userId) → verify resumes at step 4, not step 1
+- [x] T42 E2E test: Resume interrupted flow — POST /start → answer 3 steps → new POST /start (same userId) → verify resumes at step 4, not step 1
 
-- [ ] T43 E2E test: Edit from review — complete all steps to REVIEW → POST /answer with targetStep=LOCATION (via editField endpoint or re-answer) → verify flow returns to LOCATION → re-answer → auto-advance back to REVIEW → POST /submit
+- [x] T43 E2E test: Edit from review — complete all steps to REVIEW → POST /answer with targetStep=LOCATION (via editField endpoint or re-answer) → verify flow returns to LOCATION → re-answer → auto-advance back to REVIEW → POST /submit
 
 **Checkpoint**: All new tests pass. All 205+7 existing tests still pass. `tsc --noEmit` = 0.
 
@@ -182,15 +182,15 @@
 
 **Goal**: Update FastAPI Chat UI (`app/static/chat.html`) to use structured onboarding flow.
 
-- [ ] T44 Update `app/static/chat.html` — render multi-choice buttons for PROPERTY_TYPE and LISTING_TYPE steps. Clicking a button sends the selected option as the answer (already partially implemented with option pills)
+- [~] T44 (superseded by React frontend) Update `app/static/chat.html` — render multi-choice buttons for PROPERTY_TYPE and LISTING_TYPE steps. Clicking a button sends the selected option as the answer (already partially implemented with option pills)
 
-- [ ] T45 Add form mode to `app/static/chat.html` — for LOCATION and DETAILS steps, render inline form with labeled input fields (governorate, city, district, etc.). Submit button sends all fields as structured object
+- [~] T45 (superseded by React frontend) Add form mode to `app/static/chat.html` — for LOCATION and DETAILS steps, render inline form with labeled input fields (governorate, city, district, etc.). Submit button sends all fields as structured object
 
-- [ ] T46 Add numeric input mode to `app/static/chat.html` — for PRICE step, show number-only input field with "جنيه" (EGP) label. Validate positive number client-side before sending
+- [~] T46 (superseded by React frontend) Add numeric input mode to `app/static/chat.html` — for PRICE step, show number-only input field with "جنيه" (EGP) label. Validate positive number client-side before sending
 
-- [ ] T47 Add file upload widget to `app/static/chat.html` — for MEDIA step, show upload button + "تخطي" (skip) button. Upload sends to `/onboarding/upload-media`. Skip advances to REVIEW
+- [~] T47 (superseded by React frontend) Add file upload widget to `app/static/chat.html` — for MEDIA step, show upload button + "تخطي" (skip) button. Upload sends to `/onboarding/upload-media`. Skip advances to REVIEW
 
-- [ ] T48 Add review screen to `app/static/chat.html` — call GET `/onboarding/review`, display all collected data as editable summary card. Each field has an "edit" button that triggers `editField` for that step. "Submit" button calls POST `/onboarding/submit`
+- [~] T48 (superseded by React frontend) Add review screen to `app/static/chat.html` — call GET `/onboarding/review`, display all collected data as editable summary card. Each field has an "edit" button that triggers `editField` for that step. "Submit" button calls POST `/onboarding/submit`
 
 **Checkpoint**: Full onboarding flow works in browser at `/ui`. Structured input for each step type. Review + edit + submit functional.
 
@@ -204,7 +204,7 @@
 
 **Dependency**: Phase 1 complete (properties exist in DB)
 
-- [ ] T49 Implement `startNegotiation(propertyId: string, buyerId: string, maxPrice: number)` in `src/negotiation/negotiation.service.ts`:
+- [x] T49 Implement `startNegotiation(propertyId: string, buyerId: string, maxPrice: number)` in `src/negotiation/negotiation.service.ts`:
   1. Load Property → get seller userId + listing price (min_price proxy)
   2. Validate buyer ≠ seller
   3. Create `Negotiation` row: propertyId, buyerId, sellerId, minPrice=listing price, maxPrice=buyer budget, status=ACTIVE, roundNumber=1
@@ -214,19 +214,19 @@
   7. Format Arabic message: "بكل احترام، السعر الحالي هو {initialOffer} جنيه. هل يناسب حضرتك؟"
   8. Return `{ negotiation, offer, message }`
 
-- [ ] T50 Implement `getConcessionRate(round: number): number` in `src/negotiation/negotiation.service.ts`:
+- [x] T50 Implement `getConcessionRate(round: number): number` in `src/negotiation/negotiation.service.ts`:
   - round 1–2 → 0.05 (5%)
   - round 3–5 → 0.10 (10%)
   - round 6+  → 0.15 (15%)
 
-- [ ] T51 Implement `calculateCounterOffer(negotiation: Negotiation): Decimal` in `src/negotiation/negotiation.service.ts`:
+- [x] T51 Implement `calculateCounterOffer(negotiation: Negotiation): Decimal` in `src/negotiation/negotiation.service.ts`:
   1. `gap = maxPrice - minPrice`
   2. `concessionRate = getConcessionRate(negotiation.roundNumber)`
   3. `counter = currentOffer + (gap × concessionRate)`
   4. Clamp: `Math.min(counter, maxPrice)` and `Math.max(counter, minPrice)`
   5. Return counter
 
-- [ ] T52 Implement `nextStep(negotiationId: string, action: 'accept' | 'reject' | 'request_counter')` in `src/negotiation/negotiation.service.ts`:
+- [x] T52 Implement `nextStep(negotiationId: string, action: 'accept' | 'reject' | 'request_counter')` in `src/negotiation/negotiation.service.ts`:
   - **accept**:
     1. Set `status = AGREED`
     2. Create `Deal` row: negotiationId, buyerId, sellerId, finalPrice=currentOffer, status=PENDING
@@ -249,17 +249,17 @@
     8. Format message: "بكل احترام، السعر الحالي هو {counterOffer} جنيه. هل يناسب حضرتك؟"
     9. Return `{ negotiation, action: 'counter', message, offer: counterOffer, isComplete: false }`
 
-- [ ] T53 Implement `getStatus(negotiationId: string)` in `src/negotiation/negotiation.service.ts`:
+- [x] T53 Implement `getStatus(negotiationId: string)` in `src/negotiation/negotiation.service.ts`:
   1. Load Negotiation with all Offers (ordered by round)
   2. Return `{ negotiation, offers, currentRound: roundNumber, maxRounds: 6 }`
 
-- [ ] T54 Implement `formatMessage(action: string, price?: number): string` in `src/negotiation/negotiation.service.ts`:
+- [x] T54 Implement `formatMessage(action: string, price?: number): string` in `src/negotiation/negotiation.service.ts`:
   - `counter` → "بكل احترام، السعر الحالي هو {price} جنيه. هل يناسب حضرتك؟"
   - `accept` → "تم الاتفاق على {price} جنيه. برجاء استكمال الدفع."
   - `reject` → "نأسف، لم نتمكن من الوصول لاتفاق مناسب."
   - Format price with Arabic numeral grouping (e.g., 2,500,000)
 
-- [ ] T55 Deal creation helper: ensure `finalSubmit` in nextStep(accept) uses a Prisma transaction — create Deal + update Negotiation status + create AiLog atomically. On failure → rollback all
+- [x] T55 Deal creation helper: ensure `finalSubmit` in nextStep(accept) uses a Prisma transaction — create Deal + update Negotiation status + create AiLog atomically. On failure → rollback all
 
 **Checkpoint**: Full negotiation algorithm works. Offers calculated correctly per constitution formula. Deal created on accept. Max 6 rounds enforced.
 
@@ -269,17 +269,17 @@
 
 **Goal**: Wire HTTP endpoints for negotiation.
 
-- [ ] T56 Create `src/negotiation/dto/start-negotiation.dto.ts` — `{ propertyId: string, buyerId: string, maxPrice: number }` with `@IsUUID()` for IDs, `@IsPositive()` for maxPrice
+- [x] T56 Create `src/negotiation/dto/start-negotiation.dto.ts` — `{ propertyId: string, buyerId: string, maxPrice: number }` with `@IsUUID()` for IDs, `@IsPositive()` for maxPrice
 
-- [ ] T57 Create `src/negotiation/dto/next-step.dto.ts` — `{ negotiationId: string, action: string }` with `@IsUUID()`, `@IsIn(['accept', 'reject', 'request_counter'])`
+- [x] T57 Create `src/negotiation/dto/next-step.dto.ts` — `{ negotiationId: string, action: string }` with `@IsUUID()`, `@IsIn(['accept', 'reject', 'request_counter'])`
 
-- [ ] T58 Create `src/negotiation/dto/negotiation-response.dto.ts` — interfaces for `NegotiationStepResult` and `NegotiationStatusResponse`
+- [x] T58 Create `src/negotiation/dto/negotiation-response.dto.ts` — interfaces for `NegotiationStepResult` and `NegotiationStatusResponse`
 
-- [ ] T59 Implement `POST /negotiation/start` in `src/negotiation/negotiation.controller.ts` — body: StartNegotiationDto → call startNegotiation → return result (201)
+- [x] T59 Implement `POST /negotiation/start` in `src/negotiation/negotiation.controller.ts` — body: StartNegotiationDto → call startNegotiation → return result (201)
 
-- [ ] T60 Implement `POST /negotiation/next-step` in `src/negotiation/negotiation.controller.ts` — body: NextStepDto → call nextStep → return NegotiationStepResult (200)
+- [x] T60 Implement `POST /negotiation/next-step` in `src/negotiation/negotiation.controller.ts` — body: NextStepDto → call nextStep → return NegotiationStepResult (200)
 
-- [ ] T61 Implement `GET /negotiation/status` in `src/negotiation/negotiation.controller.ts` — query: negotiationId → call getStatus → return NegotiationStatusResponse (200)
+- [x] T61 Implement `GET /negotiation/status` in `src/negotiation/negotiation.controller.ts` — query: negotiationId → call getStatus → return NegotiationStatusResponse (200)
 
 **Checkpoint**: All 3 endpoints callable. Validation works. 400 on bad input, 404 on missing negotiation.
 
@@ -289,33 +289,54 @@
 
 **Goal**: Full test coverage for negotiation service and controller.
 
-- [ ] T62 Unit test: `startNegotiation` in `src/negotiation/negotiation.service.spec.ts` — 4 cases: valid start (negotiation + offer created, initial offer = maxPrice×0.85), buyer = seller → reject (400), property not found → 404, correct Arabic message returned
+- [x] T62 Unit test: `startNegotiation` in `src/negotiation/negotiation.service.spec.ts` — 4 cases: valid start (negotiation + offer created, initial offer = maxPrice×0.85), buyer = seller → reject (400), property not found → 404, correct Arabic message returned
 
-- [ ] T63 Unit test: `getConcessionRate` — 6 cases: round 1→0.05, round 2→0.05, round 3→0.10, round 4→0.10, round 5→0.10, round 6→0.15
+- [x] T63 Unit test: `getConcessionRate` — 6 cases: round 1→0.05, round 2→0.05, round 3→0.10, round 4→0.10, round 5→0.10, round 6→0.15
 
-- [ ] T64 Unit test: `calculateCounterOffer` — 4 cases: round 1 with known gap → expected counter, round 5 → higher concession, counter clamped to maxPrice if exceeded, counter ≥ minPrice always
+- [x] T64 Unit test: `calculateCounterOffer` — 4 cases: round 1 with known gap → expected counter, round 5 → higher concession, counter clamped to maxPrice if exceeded, counter ≥ minPrice always
 
-- [ ] T65 Unit test: `nextStep(accept)` — 3 cases: status→AGREED, Deal created with correct finalPrice, AiLog created with ACCEPT, Arabic accept message returned
+- [x] T65 Unit test: `nextStep(accept)` — 3 cases: status→AGREED, Deal created with correct finalPrice, AiLog created with ACCEPT, Arabic accept message returned
 
-- [ ] T66 Unit test: `nextStep(reject)` — 3 cases: status→FAILED, no Deal created, AiLog with REJECT, Arabic reject message
+- [x] T66 Unit test: `nextStep(reject)` — 3 cases: status→FAILED, no Deal created, AiLog with REJECT, Arabic reject message
 
-- [ ] T67 Unit test: `nextStep(request_counter)` — 4 cases: round incremented, new Offer created with correct amount, currentOffer updated, counter message returned
+- [x] T67 Unit test: `nextStep(request_counter)` — 4 cases: round incremented, new Offer created with correct amount, currentOffer updated, counter message returned
 
-- [ ] T68 Unit test: `nextStep` max rounds — 2 cases: round 7 request_counter → auto FAILED, round 6 still allowed
+- [x] T68 Unit test: `nextStep` max rounds — 2 cases: round 7 request_counter → auto FAILED, round 6 still allowed
 
-- [ ] T69 Unit test: `nextStep` auto-accept — when counterOffer ≥ minPrice → status=AGREED automatically, Deal created
+- [x] T69 Unit test: `nextStep` auto-accept — when counterOffer ≥ minPrice → status=AGREED automatically, Deal created
 
-- [ ] T70 Unit test: `formatMessage` — 3 cases: counter with price, accept with price, reject without price. Verify Arabic text exact match
+- [x] T70 Unit test: `formatMessage` — 3 cases: counter with price, accept with price, reject without price. Verify Arabic text exact match
 
-- [ ] T71 Unit test: Controller — 3 endpoint tests per endpoint: valid input (200/201), bad DTO (400), missing entity (404)
+- [x] T71 Unit test: Controller — 3 endpoint tests per endpoint: valid input (200/201), bad DTO (400), missing entity (404)
 
-- [ ] T72 E2E test: Full negotiation → agree in `test/negotiation.e2e-spec.ts` — create Property first → POST /negotiation/start → POST /next-step (request_counter) ×3 → POST /next-step (accept) → verify Deal in DB with correct finalPrice
+- [x] T72 E2E test: Full negotiation → agree in `test/negotiation.e2e-spec.ts` — create Property first → POST /negotiation/start → POST /next-step (request_counter) ×3 → POST /next-step (accept) → verify Deal in DB with correct finalPrice
 
-- [ ] T73 E2E test: Full negotiation → fail — POST /start → POST /next-step (request_counter) ×6 → POST /next-step (request_counter) → verify status=FAILED, no Deal
+- [x] T73 E2E test: Full negotiation → fail — POST /start → POST /next-step (request_counter) ×6 → POST /next-step (request_counter) → verify status=FAILED, no Deal
 
-- [ ] T74 E2E test: Immediate accept — POST /start → POST /next-step (accept) → verify Deal created at initial offer price (maxPrice × 0.85)
+- [x] T74 E2E test: Immediate accept — POST /start → POST /next-step (accept) → verify Deal created at initial offer price (maxPrice × 0.85)
 
 **Checkpoint**: All negotiation tests pass. All existing tests (205 unit + 7 e2e + Phase 1 tests) still pass. `tsc --noEmit` = 0.
+
+---
+
+### Sprint 2.4 — Voice-Chat Negotiation Page (V01–V12)
+
+**Goal**: Real buyer-side experience — voice (ar-EG STT) + text chat with a Gemma negotiator, price-band evaluation, WhatsApp escalation to seller, deposit-gated owner phone reveal. Layered on top of T49–T74; does not change the Phase 2 algorithm.
+
+- [x] V01 Add `Property.minPrice` / `Property.maxPrice` Decimal columns to `prisma/schema.prisma`
+- [x] V02 Add `NegotiationEscalation` model (id, negotiationId FK, buyerOffer, token unique, sellerAction, sellerCounter, status default PENDING, createdAt, resolvedAt) to `prisma/schema.prisma`
+- [x] V03 Generate migration `prisma/migrations/20260427000000_add_negotiation_voice_phase/migration.sql` (apply with `prisma migrate deploy`)
+- [x] V04 Build `backend/src/negotiation/gemma.client.ts` — Ollama HTTP wrapper (`OLLAMA_BASE_URL`, `GEMMA_MODEL=gemma3:27b`), 15 s AbortController, deterministic Arabic fallback
+- [x] V05 Add `POST /negotiations/chat` endpoint + `chatWithGemma()` service method with system prompt enforcing rules (never reveal phone; never disclose seller floor)
+- [x] V06 Add `POST /negotiations/propose-price` endpoint + `proposePrice()` service method — IN_BAND / BELOW_MIN / ABOVE_MAX decision, auto-Deal + deposit creation on accept
+- [x] V07 Add `WhatsappService.sendTextMessage`-based `escalateToSeller()` helper with signed JWT token (48 h) embedding `escalationId`
+- [x] V08 Add `GET`/`POST /negotiations/seller-action/:token` (public) + `applySellerAction()` (ACCEPT / REJECT / COUNTER) — extends `getStatus` with `latestEscalation` for buyer polling
+- [x] V09 Add `PaymentsService.initiateDeposit()` (fixed 100 EGP, type=DEPOSIT, MOCK provider, idempotent) + `POST /payments/initiate-deposit`
+- [x] V10 Full rewrite of `frontend/src/pages/NegotiationPage.tsx` — `useReducer` state machine (loading → greeting → awaiting_choice → awaiting_price → evaluating → waiting_seller → awaiting_payment → done), Web Speech (ar-EG) mic, deposit modal with mock-pay button, owner-phone reveal card, 4 s polling
+- [x] V11 New `frontend/src/pages/SellerActionPage.tsx` (public route `/seller-action/:token`) + register in `App.tsx`; new API client functions in `frontend/src/api/negotiations.ts` and `payments.ts`
+- [x] V12 Wire `minPrice` / `maxPrice` into the listing wizard — `frontend/app/pages/PropertyWizard/components/steps/Step2Pricing.tsx` adds two SALE-only inputs auto-defaulting to ±10 %; `backend/src/onboarding/onboarding.service.ts` `validatePrice` accepts the `{price, minPrice, maxPrice}` object shape and `finalSubmit` propagates them; 8 new unit tests for band validation
+
+**Checkpoint**: `nest build` ✅ · `npm test -- negotiation` 84/84 ✅ · `npm test -- onboarding.service.spec -t validatePrice` 8/8 ✅ · `npm --prefix frontend run build` ✅ · operator smoke checklist at `frontend/scripts/smoke-negotiation.md`. Migration sealed; needs `prisma migrate deploy` against the live DB.
 
 ---
 
@@ -376,25 +397,36 @@ T01–T08 (schema) → T12–T20 (service) → T25–T30 (controller) → T41–
 | 1.2 Onboarding Service | T11–T20 | 10 | 5–7 days |
 | 1.3 Controller & DTOs | T21–T30 | 10 | 2–3 days |
 | 1.4 Tests | T31–T43 | 13 | 3–4 days |
-| 1.5 Chat UI | T44–T48 | 5 | 2–3 days |
+| 1.5 Chat UI (FastAPI) | T44–T48 | 5 | superseded by React frontend — `[~]` |
 | 2.1 Negotiation Service | T49–T55 | 7 | 5–7 days |
 | 2.2 Negotiation Controller | T56–T61 | 6 | 2–3 days |
 | 2.3 Negotiation Tests | T62–T74 | 13 | 3–4 days |
-| **TOTAL** | **T01–T74** | **74** | **~5 weeks** |
+| 2.4 Voice-Chat Negotiation | V01–V12 | 12 | shipped |
+| **TOTAL** | **T01–T74 + V01–V12** | **86 (74 + 12)** | **~5 weeks + voice extension** |
 
 ---
 
 ## Exit Criteria (Full Project)
 
-- [ ] PropertyDraft state machine enforces strict step order (no skipping)
-- [ ] All 8 onboarding steps work with correct Arabic questions
-- [ ] Review step shows all data and allows editing any field
-- [ ] Final submit creates Property with all fields + transfers media
-- [ ] Negotiation anchor at max_price × 0.85
-- [ ] Concession rates: 5%/10%/15% per round bracket
-- [ ] Max 6 rounds enforced — auto-fail on round 7
-- [ ] Accept creates Deal atomically
-- [ ] AI only formats messages — never decides
-- [ ] All existing tests (205 unit + 7 e2e) still pass
-- [ ] All new tests pass (onboarding unit + e2e, negotiation unit + e2e)
-- [ ] `tsc --noEmit` = 0 errors
+- [x] PropertyDraft state machine enforces strict step order (no skipping)
+- [x] All 8 onboarding steps work with correct Arabic questions
+- [x] Review step shows all data and allows editing any field
+- [x] Final submit creates Property with all fields + transfers media
+- [x] Negotiation anchor at max_price × 0.85
+- [x] Concession rates: 5%/10%/15% per round bracket
+- [x] Max 6 rounds enforced — auto-fail on round 7
+- [x] Accept creates Deal atomically
+- [x] AI only formats messages — never decides
+- [x] All existing tests (205 unit + 7 e2e) still pass — full suite **391/391 passing** across 21 suites (the previously-failing 11 onboarding/location-flow tests were updated to match the current STEP_ORDER and given complete prisma mocks)
+- [x] All new tests pass (onboarding unit + e2e where DB available, negotiation unit 84/84, validatePrice band 8/8)
+- [x] `tsc --noEmit` = 0 errors
+
+### Voice-Chat Extension (Sprint 2.4)
+
+- [x] Buyer can chat with Gemma via text + ar-EG voice on `/negotiation/:id`
+- [x] Owner can set `minPrice` / `maxPrice` band during listing wizard (SALE)
+- [x] In-band proposal → auto-accept → 100 EGP deposit → owner phone reveal
+- [x] Below-min proposal → WhatsApp escalation to seller → seller-action page → buyer page polls and resumes
+- [x] Phone reveal gated at API layer (403 without completed deposit)
+- [x] All AI turns + state transitions logged to `ai_logs`
+- [ ] Operator smoke checklist executed against live DB + Ollama (see `frontend/scripts/smoke-negotiation.md`)

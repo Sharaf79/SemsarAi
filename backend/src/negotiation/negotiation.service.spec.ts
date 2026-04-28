@@ -26,6 +26,10 @@ import {
 import { NegotiationService } from './negotiation.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from '../gemini/gemini.service';
+import { GemmaClient } from './gemma.client';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { JwtService } from '@nestjs/jwt';
+import { PaymentsService } from '../payments/payments.service';
 import { INITIAL_OFFER_FACTOR, MAX_ROUNDS } from './constants/negotiation.constants';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -115,11 +119,27 @@ describe('NegotiationService', () => {
     prisma = makePrisma();
     gemini = makeGemini();
 
+    const gemma = { chat: jest.fn().mockResolvedValue(null) } as unknown as GemmaClient;
+    const whatsapp = { sendTextMessage: jest.fn().mockResolvedValue(undefined) } as unknown as WhatsAppService;
+    const jwtService = {
+      sign: jest.fn().mockReturnValue('mock-token'),
+      verify: jest.fn().mockReturnValue({ escalationId: 'esc-id' }),
+    } as unknown as JwtService;
+    const paymentsService = {
+      initiateDeposit: jest.fn().mockResolvedValue({
+        paymentId: 'pay-id', amount: 100, fee: 100, currency: 'EGP', paymentUrl: '/payment/pay-id',
+      }),
+    } as unknown as PaymentsService;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NegotiationService,
         { provide: PrismaService, useValue: prisma },
         { provide: GeminiService, useValue: gemini },
+        { provide: GemmaClient, useValue: gemma },
+        { provide: WhatsAppService, useValue: whatsapp },
+        { provide: JwtService, useValue: jwtService },
+        { provide: PaymentsService, useValue: paymentsService },
       ],
     }).compile();
 
@@ -831,6 +851,128 @@ describe('NegotiationService', () => {
       const result = await service.handleMessage(makeContext(), 'عايز عرض تاني');
 
       expect(result).not.toHaveProperty('action');
+    });
+  });
+
+  // ── proposePrice (voice/chat phase) ───────────────────────────────────────
+
+  describe('proposePrice()', () => {
+    it('IN_BAND → marks AGREED, creates deposit', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue({
+        ...makeNegotiation(),
+        property: {
+          id: PROPERTY_ID,
+          type: PropertyType.SALE,
+          userId: SELLER_ID,
+          title: 'Test',
+          price: 1_000_000,
+          minPrice: 900_000,
+          maxPrice: 1_100_000,
+          governorate: 'Cairo',
+          city: null,
+          district: null,
+          areaM2: 100,
+        },
+        seller: { phone: '+201111111111' },
+      });
+      prisma.negotiation.update.mockResolvedValue({});
+      prisma.deal.create.mockResolvedValue({ id: DEAL_ID });
+      prisma.property.update.mockResolvedValue({});
+      prisma.aiLog.create.mockResolvedValue({});
+
+      const res = await service.proposePrice(NEGOTIATION_ID, 950_000);
+
+      expect(res.decision).toBe('IN_BAND');
+      expect(res.depositRequired).toBe(true);
+      expect(res.dealId).toBe(DEAL_ID);
+      expect(res.paymentId).toBe('pay-id');
+    });
+
+    it('BELOW_MIN → creates escalation, sends WhatsApp, returns waiting message', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue({
+        ...makeNegotiation(),
+        property: {
+          id: PROPERTY_ID,
+          type: PropertyType.SALE,
+          userId: SELLER_ID,
+          title: 'Test',
+          price: 1_000_000,
+          minPrice: 900_000,
+          maxPrice: 1_100_000,
+          governorate: null,
+          city: null,
+          district: null,
+          areaM2: null,
+        },
+        seller: { phone: '+201111111111' },
+      });
+      prisma.negotiationEscalation = {
+        create: jest.fn().mockResolvedValue({ id: 'esc-1' }),
+        update: jest.fn().mockResolvedValue({}),
+      } as any;
+      prisma.aiLog.create.mockResolvedValue({});
+
+      const res = await service.proposePrice(NEGOTIATION_ID, 500_000);
+
+      expect(res.decision).toBe('BELOW_MIN');
+      expect(res.escalationId).toBe('esc-1');
+    });
+  });
+
+  // ── applySellerAction ──────────────────────────────────────────────────────
+
+  describe('applySellerAction()', () => {
+    function setupEscalation() {
+      prisma.negotiationEscalation = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'esc-id',
+          status: 'PENDING',
+          buyerOffer: 800_000,
+          negotiation: {
+            id: NEGOTIATION_ID,
+            buyerId: BUYER_ID,
+            sellerId: SELLER_ID,
+            propertyId: PROPERTY_ID,
+            roundNumber: 2,
+            property: { id: PROPERTY_ID, type: PropertyType.SALE, userId: SELLER_ID },
+          },
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      } as any;
+      prisma.negotiation.update.mockResolvedValue({});
+      prisma.deal.create.mockResolvedValue({ id: DEAL_ID });
+      prisma.property.update.mockResolvedValue({});
+      prisma.offer.create.mockResolvedValue({});
+      prisma.aiLog.create.mockResolvedValue({});
+    }
+
+    it('ACCEPT → AGREED + deposit', async () => {
+      setupEscalation();
+      const res = await service.applySellerAction('tok', 'ACCEPT');
+      expect(res.action).toBe('ACCEPT');
+      expect(res.negotiationStatus).toBe(NegotiationStatus.AGREED);
+      expect(res.dealId).toBe(DEAL_ID);
+      expect(res.paymentId).toBe('pay-id');
+    });
+
+    it('REJECT → FAILED', async () => {
+      setupEscalation();
+      const res = await service.applySellerAction('tok', 'REJECT');
+      expect(res.action).toBe('REJECT');
+      expect(res.negotiationStatus).toBe(NegotiationStatus.FAILED);
+    });
+
+    it('COUNTER → ACTIVE with new offer round', async () => {
+      setupEscalation();
+      const res = await service.applySellerAction('tok', 'COUNTER', 950_000);
+      expect(res.action).toBe('COUNTER');
+      expect(res.negotiationStatus).toBe(NegotiationStatus.ACTIVE);
+      expect(res.counterPrice).toBe(950_000);
+    });
+
+    it('COUNTER without price → BadRequest', async () => {
+      setupEscalation();
+      await expect(service.applySellerAction('tok', 'COUNTER')).rejects.toThrow(BadRequestException);
     });
   });
 });
