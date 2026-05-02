@@ -27,19 +27,22 @@ model User {
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  properties         Property[]
-  buyerNegotiations  Negotiation[]     @relation("BuyerNegotiations")
-  sellerNegotiations Negotiation[]     @relation("SellerNegotiations")
-  buyerDeals         Deal[]            @relation("BuyerDeals")
-  sellerDeals        Deal[]            @relation("SellerDeals")
-  payments           Payment[]
-  conversations      Conversation[]
-  listings           Listing[]
-  drafts             PropertyDraft[]
-  recommendations    Recommendation[]
-  favorites          Favorite[]
-  listingCredits     ListingCredit[]
-  propertyRequests   PropertyRequest[]
+  properties          Property[]
+  buyerNegotiations   Negotiation[]        @relation("BuyerNegotiations")
+  sellerNegotiations  Negotiation[]        @relation("SellerNegotiations")
+  buyerDeals          Deal[]               @relation("BuyerDeals")
+  sellerDeals         Deal[]               @relation("SellerDeals")
+  payments            Payment[]
+  conversations       Conversation[]
+  listings            Listing[]
+  drafts              PropertyDraft[]
+  recommendations     Recommendation[]
+  favorites           Favorite[]
+  listingCredits      ListingCredit[]
+  propertyRequests    PropertyRequest[]
+  notifications       Notification[]
+  negotiationMessages NegotiationMessage[]
+  whatsappOptOut      Boolean              @default(false) @map("whatsapp_opt_out")
 
   @@map("users")
 }
@@ -143,17 +146,18 @@ model LowerOffice {
 }
 
 model Negotiation {
-  id           String            @id @default(uuid())
-  propertyId   String            @map("property_id")
-  buyerId      String            @map("buyer_id")
-  sellerId     String            @map("seller_id")
-  status       NegotiationStatus @default(ACTIVE)
-  currentOffer Decimal?          @map("current_offer") @db.Decimal(14, 2)
-  minPrice     Decimal?          @map("min_price") @db.Decimal(14, 2)
-  maxPrice     Decimal?          @map("max_price") @db.Decimal(14, 2)
-  roundNumber  Int               @default(0) @map("round_number")
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  id             String            @id @default(uuid())
+  propertyId     String            @map("property_id")
+  buyerId        String            @map("buyer_id")
+  sellerId       String            @map("seller_id")
+  status         NegotiationStatus @default(ACTIVE)
+  currentOffer   Decimal?          @map("current_offer") @db.Decimal(14, 2)
+  minPrice       Decimal?          @map("min_price") @db.Decimal(14, 2)
+  maxPrice       Decimal?          @map("max_price") @db.Decimal(14, 2)
+  roundNumber    Int               @default(0) @map("round_number")
+  lastActivityAt DateTime          @default(now()) @map("last_activity_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
 
   property    Property                @relation(fields: [propertyId], references: [id])
   buyer       User                    @relation("BuyerNegotiations", fields: [buyerId], references: [id])
@@ -162,10 +166,12 @@ model Negotiation {
   deals       Deal[]
   aiLogs      AiLog[]
   escalations NegotiationEscalation[]
+  messages    NegotiationMessage[]
 
   @@index([propertyId])
   @@index([buyerId])
   @@index([sellerId])
+  @@index([lastActivityAt])
   @@map("negotiations")
 }
 
@@ -173,7 +179,7 @@ model NegotiationEscalation {
   id            String    @id @default(uuid())
   negotiationId String    @map("negotiation_id")
   buyerOffer    Decimal   @map("buyer_offer") @db.Decimal(14, 2)
-  token         String    @unique
+  token         String    @unique @db.VarChar(512)
   sellerAction  String?   @map("seller_action") // ACCEPT | REJECT | COUNTER
   sellerCounter Decimal?  @map("seller_counter") @db.Decimal(14, 2)
   status        String    @default("PENDING") // PENDING | RESOLVED
@@ -597,6 +603,20 @@ enum MediaType {
   VIDEO
 }
 
+enum MessageSenderRole {
+  BUYER
+  SELLER
+  AI
+  SYSTEM
+}
+
+enum MessageKind {
+  TEXT // free-form (buyer opinions only)
+  OFFER // counter-offer card
+  ACTION // accept / reject marker
+  NOTICE // system event (round advance, status change)
+}
+
 // ─── Buyer / Renter Requests (spec 006) ─────────────────────────
 
 model PropertyRequest {
@@ -712,4 +732,64 @@ enum MatchStatus {
   DISMISSED
   CONVERTED
   CLOSED
+}
+
+// ─── Notifications (Spec 4) ────────────────────────────────────
+
+enum NotificationType {
+  OFFER_PROPOSED
+  OFFER_ACCEPTED
+  OFFER_REJECTED
+  OFFER_COUNTERED
+  NEGOTIATION_AGREED
+  NEGOTIATION_FAILED
+}
+
+enum NotificationChannel {
+  IN_APP
+  WHATSAPP
+  BOTH
+}
+
+model NegotiationMessage {
+  id             String            @id @default(uuid())
+  negotiationId  String            @map("negotiation_id")
+  senderRole     MessageSenderRole @map("sender_role")
+  senderUserId   String?           @map("sender_user_id") // null for AI / SYSTEM
+  body           String            @db.Text
+  kind           MessageKind       @default(TEXT)
+  meta           Json?
+  clientId       String?           @map("client_id") // for dedupe
+  createdAt      DateTime          @default(now()) @map("created_at")
+  readByBuyerAt  DateTime?         @map("read_by_buyer_at")
+  readBySellerAt DateTime?         @map("read_by_seller_at")
+
+  negotiation Negotiation @relation(fields: [negotiationId], references: [id])
+  sender      User?       @relation(fields: [senderUserId], references: [id])
+
+  @@unique([negotiationId, clientId], map: "negotiation_messages_negotiationId_clientId_key")
+  @@index([negotiationId, createdAt])
+  @@map("negotiation_messages")
+}
+
+model Notification {
+  id            String              @id @default(uuid())
+  userId        String              @map("user_id")
+  type          NotificationType
+  title         String
+  body          String              @db.Text
+  payload       Json                @default("{}")
+  link          String              @db.VarChar(1024)
+  isRead        Boolean             @default(false) @map("is_read")
+  channel       NotificationChannel @default(IN_APP)
+  whatsappSent  Boolean             @default(false) @map("whatsapp_sent")
+  whatsappError String?             @map("whatsapp_error")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  readAt        DateTime?           @map("read_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }

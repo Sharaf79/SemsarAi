@@ -327,4 +327,13 @@ export class WhatsAppService {
     }
     return null;
   }
+
+  /**
+   * Generic notification message sender.
+   * Used by NotificationsService for all milestone notifications.
+   * Delegates to sendTextMessage internally.
+   */
+  async sendNotificationMessage(toPhone: string, body: string): Promise<void> {
+    return this.sendTextMessage(toPhone, body);
+  }
 }

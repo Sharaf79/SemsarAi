@@ -173,4 +173,12 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   INTERNAL_WEBHOOK_SECRET?: string;
+
+  // ─── Feature Flags ────────────────────────────────────────
+
+  /** Enable Socket.IO-based negotiation V2 (default: true in development) */
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  NEGOTIATION_V2?: boolean;
 }

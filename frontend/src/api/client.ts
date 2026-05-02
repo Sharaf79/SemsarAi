@@ -6,7 +6,7 @@ const BASE_URL = '/api';
 export const apiClient = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 15_000,
+  timeout: 90_000, // LLM calls (extraction + formatting) can take 50+ seconds
 });
 
 // Attach JWT on every request

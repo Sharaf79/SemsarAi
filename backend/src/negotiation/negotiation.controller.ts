@@ -21,6 +21,7 @@ import {
   ChatDto,
   ProposePriceDto,
   SellerActionDto,
+  NegotiationBuyerReplyDto,
 } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { JwtPayload } from '../auth/guards/jwt-auth.guard';
@@ -69,6 +70,77 @@ export class NegotiationController {
       return { success: true, data };
     } catch (error) {
       this.handleError('POST /start', error);
+    }
+  }
+
+  // ─── GET /negotiations/:id/buyer ───────────────────────────
+
+  @Get(':id/buyer')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async getBuyerNegotiation(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Request() req: { user?: JwtPayload },
+  ) {
+    try {
+      this.logger.debug(`GET /:id/buyer — negotiation ${id}`);
+
+      const data = await this.negotiationService.getBuyerNegotiation(
+        id,
+        req.user?.sub ?? '',
+      );
+
+      return { success: true, data };
+    } catch (error) {
+      this.handleError('GET /:id/buyer', error);
+    }
+  }
+
+  // ─── GET /negotiations/:id/seller ──────────────────────────
+
+  @Get(':id/seller')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async getSellerNegotiation(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Request() req: { user?: JwtPayload },
+  ) {
+    try {
+      this.logger.debug(`GET /:id/seller — negotiation ${id}`);
+
+      const data = await this.negotiationService.getSellerNegotiation(
+        id,
+        req.user?.sub ?? '',
+      );
+
+      return { success: true, data };
+    } catch (error) {
+      this.handleError('GET /:id/seller', error);
+    }
+  }
+
+  // ─── POST /negotiations/:id/buyer/reply ─────────────────────
+
+  @Post(':id/buyer/reply')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async submitBuyerReply(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: NegotiationBuyerReplyDto,
+    @Request() req: { user?: JwtPayload },
+  ) {
+    try {
+      this.logger.debug(`POST /:id/buyer/reply — negotiation ${id}, responseType ${dto.responseType}`);
+
+      const data = await this.negotiationService.submitBuyerReply(
+        id,
+        req.user?.sub ?? '',
+        dto,
+      );
+
+      return { success: true, data };
+    } catch (error) {
+      this.handleError('POST /:id/buyer/reply', error);
     }
   }
 
@@ -148,27 +220,143 @@ export class NegotiationController {
     }
   }
 
-  // ─── POST /negotiations/chat ───────────────────────────────
+  // ─── POST /negotiations/chat ────────────────────────────────
 
+  /**
+   * Free-form chat with the Gemma negotiator.
+   * Body: { negotiationId, userMessage, history? }
+   */
   @Post('chat')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   async chat(@Body() dto: ChatDto) {
     try {
-      this.logger.debug(`POST /chat — negotiation ${dto.negotiationId}`);
+      this.logger.debug(
+        `POST /chat — negotiation ${dto.negotiationId}`,
+      );
+
+      const history = (dto.history ?? []).map((h) => ({
+        role: h.role as 'user' | 'assistant' | 'system',
+        content: h.content,
+      }));
+
       const data = await this.negotiationService.chatWithGemma(
         dto.negotiationId,
-        dto.history ?? [],
+        history,
         dto.userMessage,
       );
+
       return { success: true, data };
     } catch (error) {
       this.handleError('POST /chat', error);
     }
   }
 
-  // ─── POST /negotiations/propose-price ──────────────────────
+  // ─── GET /negotiations/:id/messages (T14) ─────────────────
 
+  /**
+   * Get messages for a negotiation with cursor-based pagination.
+   * Query params: ?cursor=<messageId>&limit=50
+   */
+  @Get(':id/messages')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async getMessages(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Request() req: { user?: JwtPayload; query?: Record<string, string> },
+  ) {
+    try {
+      const userId = req.user?.sub ?? '';
+      if (!userId) throw new BadRequestException('Not authenticated');
+
+      // Role-agnostic membership check (buyer OR seller)
+      await this.negotiationService.verifyMembership(id, userId);
+
+      const cursor = req.query?.cursor;
+      const limitRaw = req.query?.limit;
+      const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
+
+      const result = await this.negotiationService.getMessages(id, {
+        cursor,
+        limit: Number.isFinite(limit) ? limit : undefined,
+      });
+      return { success: true, data: result };
+    } catch (error) {
+      this.handleError('GET /:id/messages', error);
+    }
+  }
+
+  // ─── POST /negotiations/:id/messages (T14) ──────────────────
+
+  /**
+   * Send a text message in a negotiation.
+   * Body: { body, clientId? }
+   */
+  @Post(':id/messages')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(JwtAuthGuard)
+  async sendMessage(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: { body: string; clientId?: string },
+    @Request() req: { user?: JwtPayload },
+  ) {
+    try {
+      const userId = req.user?.sub ?? '';
+      if (!userId) throw new BadRequestException('Not authenticated');
+      if (!dto?.body || !dto.body.trim()) {
+        throw new BadRequestException('Message body is required');
+      }
+
+      const { role } = await this.negotiationService.verifyMembership(id, userId);
+
+      // Rate limit: 6 messages/min per (user, negotiation)
+      this.negotiationService.assertMessageRateLimit(id, userId);
+
+      const message = await this.negotiationService.messageWriter({
+        negotiationId: id,
+        senderRole: role,
+        senderUserId: userId,
+        body: dto.body,
+        kind: 'TEXT',
+        clientId: dto.clientId,
+      });
+
+      return { success: true, data: message };
+    } catch (error) {
+      this.handleError('POST /:id/messages', error);
+    }
+  }
+
+  // ─── POST /negotiations/:id/read (T14) ──────────────────────
+
+  /**
+   * Mark all messages in a negotiation as read for the current user.
+   */
+  @Post(':id/read')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async markRead(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Request() req: { user?: JwtPayload },
+  ) {
+    try {
+      const userId = req.user?.sub ?? '';
+      if (!userId) throw new BadRequestException('Not authenticated');
+
+      await this.negotiationService.verifyMembership(id, userId);
+      await this.negotiationService.markAllRead(id, userId);
+      return { success: true };
+    } catch (error) {
+      this.handleError('POST /:id/read', error);
+    }
+  }
+
+  // ─── POST /negotiations/propose-price ───────────────────────
+
+  /**
+   * Buyer proposes a concrete price. Auto-accept or escalate to seller.
+   * Body: { negotiationId, proposedPrice }
+   */
   @Post('propose-price')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
@@ -177,22 +365,29 @@ export class NegotiationController {
       this.logger.debug(
         `POST /propose-price — negotiation ${dto.negotiationId}, price ${dto.proposedPrice}`,
       );
+
       const data = await this.negotiationService.proposePrice(
         dto.negotiationId,
         dto.proposedPrice,
       );
+
       return { success: true, data };
     } catch (error) {
       this.handleError('POST /propose-price', error);
     }
   }
 
-  // ─── GET /negotiations/seller-action/:token ───────────────
+  // ─── GET /negotiations/seller-action/:token ─────────────────
 
+  /**
+   * Public endpoint — auth is via the JWT token in the URL.
+   * Returns escalation details for the seller to view.
+   */
   @Get('seller-action/:token')
   @HttpCode(HttpStatus.OK)
-  async getSellerEscalation(@Param('token') token: string) {
+  async getSellerAction(@Param('token') token: string) {
     try {
+      this.logger.debug(`GET /seller-action/:token`);
       const data = await this.negotiationService.getEscalationByToken(token);
       return { success: true, data };
     } catch (error) {
@@ -200,8 +395,12 @@ export class NegotiationController {
     }
   }
 
-  // ─── POST /negotiations/seller-action/:token ──────────────
+  // ─── POST /negotiations/seller-action/:token ────────────────
 
+  /**
+   * Public endpoint — seller submits ACCEPT / REJECT / COUNTER.
+   * Body: { action, counterPrice? }
+   */
   @Post('seller-action/:token')
   @HttpCode(HttpStatus.OK)
   async submitSellerAction(
@@ -209,11 +408,16 @@ export class NegotiationController {
     @Body() dto: SellerActionDto,
   ) {
     try {
+      this.logger.debug(
+        `POST /seller-action/:token — action ${dto.action}`,
+      );
+
       const data = await this.negotiationService.applySellerAction(
         token,
         dto.action,
         dto.counterPrice,
       );
+
       return { success: true, data };
     } catch (error) {
       this.handleError('POST /seller-action/:token', error);

@@ -1,16 +1,11 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-  NotFoundException,
-  ConflictException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { randomUUID } from 'node:crypto';
+import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeminiService } from '../gemini/gemini.service';
-import { GemmaClient, GemmaChatMessage } from './gemma.client';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { GemmaClient, type GemmaChatMessage } from './gemma.client';
+import { JwtService } from '@nestjs/jwt';
 import { PaymentsService } from '../payments/payments.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   NegotiationStatus,
   PropertyStatus,
@@ -21,6 +16,7 @@ import {
 } from '@prisma/client';
 import { NegotiationAction, NegotiationResult, ActionResult, COMMISSION_RATE } from './negotiation.types';
 import { ConversationContext, ConversationResponse } from '../common';
+import { NegotiationGateway } from './negotiation.gateway';
 import {
   INITIAL_OFFER_FACTOR,
   MAX_ROUNDS,
@@ -37,12 +33,147 @@ export class NegotiationService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly gemini: GeminiService,
     private readonly gemma: GemmaClient,
-    private readonly whatsapp: WhatsAppService,
     private readonly jwtService: JwtService,
     private readonly payments: PaymentsService,
+    private readonly whatsapp: WhatsAppService,
+    private readonly notifications: NotificationsService,
+    private readonly gateway: NegotiationGateway,
   ) {}
+
+  // ─── T12: messageWriter helper ────────────────────────────────
+
+  /** Track pending emissions per transaction so they only fire on commit. */
+  private readonly pendingTxEmits = new WeakMap<
+    Prisma.TransactionClient,
+    Array<() => void>
+  >();
+
+  /**
+   * In-memory rate limiter for REST message sends.
+   * Keyed on `${userId}:${negotiationId}`. 6 messages per rolling 60s window.
+   */
+  private readonly msgRateLimits = new Map<
+    string,
+    { count: number; windowStart: number }
+  >();
+
+  assertMessageRateLimit(negotiationId: string, userId: string): void {
+    const key = `${userId}:${negotiationId}`;
+    const now = Date.now();
+    const cur = this.msgRateLimits.get(key);
+    if (!cur || now - cur.windowStart > 60_000) {
+      this.msgRateLimits.set(key, { count: 1, windowStart: now });
+      return;
+    }
+    cur.count += 1;
+    if (cur.count > 6) {
+      throw new BadRequestException(
+        'Rate limit exceeded — max 6 messages per minute',
+      );
+    }
+  }
+
+  /**
+   * Persist a NegotiationMessage row and emit it to the negotiation room.
+   *
+   * Transaction safety:
+   *   - When called WITHOUT a tx, persistence and emission happen in order.
+   *   - When called WITH a tx, the emission is deferred until the caller
+   *     invokes `flushTxEmits(tx)` AFTER `await tx.$commit()` (or after the
+   *     surrounding $transaction callback returns, since Prisma commits then).
+   *     Use `runInTransaction()` for the typical pattern.
+   *
+   * @returns the created message row (with id)
+   */
+  async messageWriter(params: {
+    negotiationId: string;
+    senderRole: 'BUYER' | 'SELLER' | 'AI' | 'SYSTEM';
+    senderUserId?: string | null;
+    body: string;
+    kind?: 'TEXT' | 'OFFER' | 'ACTION' | 'NOTICE';
+    meta?: Record<string, unknown> | null;
+    clientId?: string | null;
+    tx?: Prisma.TransactionClient;
+  }) {
+    const db = params.tx ?? this.prisma;
+
+    const message = await db.negotiationMessage.create({
+      data: {
+        negotiationId: params.negotiationId,
+        senderRole: params.senderRole,
+        senderUserId: params.senderUserId ?? null,
+        body: params.body,
+        kind: params.kind ?? 'TEXT',
+        meta: params.meta ? (params.meta as Prisma.InputJsonValue) : undefined,
+        clientId: params.clientId ?? null,
+      },
+    });
+
+    await db.negotiation.update({
+      where: { id: params.negotiationId },
+      data: { lastActivityAt: new Date() },
+    }).catch((err) =>
+      this.logger.warn(`Failed to update lastActivityAt: ${(err as Error).message}`),
+    );
+
+    const emit = () => this.gateway.emitMessage(params.negotiationId, message);
+    if (params.tx) {
+      const queue = this.pendingTxEmits.get(params.tx) ?? [];
+      queue.push(emit);
+      this.pendingTxEmits.set(params.tx, queue);
+    } else {
+      emit();
+    }
+
+    return message;
+  }
+
+  /**
+   * Run a callback inside a Prisma transaction; emit deferred socket events
+   * only after the transaction commits successfully. Roll back ⇒ no emit.
+   */
+  async runInTransaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    let usedTx: Prisma.TransactionClient | null = null;
+    const result = await this.prisma.$transaction(async (tx) => {
+      usedTx = tx;
+      return fn(tx);
+    });
+    if (usedTx) {
+      const queue = this.pendingTxEmits.get(usedTx);
+      if (queue) {
+        for (const emit of queue) {
+          try {
+            emit();
+          } catch (err) {
+            this.logger.warn(
+              `Deferred socket emit failed: ${(err as Error).message}`,
+            );
+          }
+        }
+        this.pendingTxEmits.delete(usedTx);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Wrap a Gemini/AI call with ai_thinking:true/false events.
+   * Uses try/finally to guarantee the false event is always emitted.
+   */
+  async withAiThinking<T>(
+    negotiationId: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    this.gateway.emitAiThinking(negotiationId, true);
+    try {
+      return await fn();
+    } finally {
+      this.gateway.emitAiThinking(negotiationId, false);
+    }
+  }
 
   // ─── T49: startNegotiation ──────────────────────────────────
 
@@ -74,14 +205,29 @@ export class NegotiationService {
       throw new BadRequestException('Buyer cannot be the seller of the property');
     }
 
-    // ── 2. Prevent duplicate active negotiation ─────────────────
+    // ── 2. Resume existing active negotiation if one exists ─────
     const existing = await this.prisma.negotiation.findFirst({
       where: { propertyId, buyerId, status: NegotiationStatus.ACTIVE },
+      orderBy: { createdAt: 'desc' },
     });
     if (existing) {
-      throw new ConflictException(
-        'An active negotiation already exists for this property and buyer',
+      this.logger.log(
+        `Resuming existing negotiation ${existing.id} for property=${propertyId} buyer=${buyerId}`,
       );
+      const currentOffer = this.round2dp(Number(existing.currentOffer ?? 0));
+      const resumeMessage = `أهلاً بعودتك! إحنا في الجولة ${existing.roundNumber} من التفاوض، والعرض الحالي هو ${currentOffer.toLocaleString('ar-EG')} جنيه. تحب تكمل؟`;
+      return {
+        negotiationId: existing.id,
+        propertyId: existing.propertyId,
+        buyerId: existing.buyerId,
+        sellerId: existing.sellerId,
+        initialOffer: currentOffer,
+        minPrice: this.round2dp(Number(existing.minPrice)),
+        maxPrice: this.round2dp(Number(existing.maxPrice)),
+        roundNumber: existing.roundNumber,
+        status: existing.status,
+        message: resumeMessage,
+      };
     }
 
     // ── 3. Compute initial offer ────────────────────────────────
@@ -89,8 +235,8 @@ export class NegotiationService {
     const initialOffer = this.round2dp(buyerMaxPrice * INITIAL_OFFER_FACTOR);
 
     // ── 4. Persist atomically ───────────────────────────────────
-    return this.prisma.$transaction(async (tx) => {
-      const negotiation = await tx.negotiation.create({
+    const negotiation = await this.prisma.$transaction(async (tx) => {
+      const neg = await tx.negotiation.create({
         data: {
           propertyId,
           buyerId,
@@ -105,41 +251,49 @@ export class NegotiationService {
 
       await tx.offer.create({
         data: {
-          negotiationId: negotiation.id,
+          negotiationId: neg.id,
           amount: initialOffer,
           round: 1,
           createdBy: 'SYSTEM',
         },
       });
 
-      const message = await this.formatMessageWithGemini('counter', initialOffer, 1);
-
-      await tx.aiLog.create({
-        data: {
-          negotiationId: negotiation.id,
-          actionType: AiActionType.ASK,
-          message,
-          data: { initialOffer, buyerMaxPrice, minPrice } as Prisma.InputJsonValue,
-        },
-      });
-
       this.logger.log(
-        `Negotiation ${negotiation.id} created — initial offer: ${initialOffer} EGP`,
+        `Negotiation ${neg.id} created — initial offer: ${initialOffer} EGP`,
       );
 
-      return {
-        negotiationId: negotiation.id,
-        propertyId,
-        buyerId,
-        sellerId: property.userId,
-        initialOffer,
-        minPrice,
-        maxPrice: buyerMaxPrice,
-        roundNumber: 1,
-        status: NegotiationStatus.ACTIVE,
-        message,
-      };
+      return neg;
     });
+
+    // ── 5. Generate AI message OUTSIDE transaction ──────────────
+    let message: string;
+    try {
+      message = await this.formatMessageWithGemini('counter', initialOffer, 1, negotiation.id);
+    } catch {
+      message = `أهلاً بك! عرضنا الأولي على العقار هو ${initialOffer.toLocaleString('ar-EG')} جنيه. هل يناسبك السعر؟`;
+    }
+
+    await this.prisma.aiLog.create({
+      data: {
+        negotiationId: negotiation.id,
+        actionType: AiActionType.ASK,
+        message,
+        data: { initialOffer, buyerMaxPrice, minPrice } as Prisma.InputJsonValue,
+      },
+    });
+
+    return {
+      negotiationId: negotiation.id,
+      propertyId,
+      buyerId,
+      sellerId: property.userId,
+      initialOffer,
+      minPrice,
+      maxPrice: buyerMaxPrice,
+      roundNumber: 1,
+      status: NegotiationStatus.ACTIVE,
+      message,
+    };
   }
 
   // ─── T52: handleAction ──────────────────────────────────────
@@ -203,7 +357,28 @@ export class NegotiationService {
         // Explicit reject — no Deal created
         status = NegotiationStatus.FAILED;
         actionType = AiActionType.REJECT;
-        message = await this.formatMessageWithGemini('reject', undefined, roundNumber);
+        message = await this.formatMessageWithGemini('reject', undefined, roundNumber, negotiationId);
+
+        // ── T17: NEGOTIATION_FAILED notification (explicit reject) ──
+        try {
+          const notifResult = await this.notifications.createForBoth({
+            negotiationId,
+            buyerId: negotiation.buyerId,
+            sellerId: negotiation.sellerId,
+            type: 'NEGOTIATION_FAILED' as any,
+            payload: { action: 'reject' },
+            propertyTitle: negotiation.property.title ?? 'عقار',
+            tx: undefined,
+          });
+          if (notifResult.buyerNotificationId) {
+            this.notifications.sendWhatsApp(notifResult.buyerNotificationId).catch(() => {});
+          }
+          if (notifResult.sellerNotificationId) {
+            this.notifications.sendWhatsApp(notifResult.sellerNotificationId).catch(() => {});
+          }
+        } catch (err) {
+          this.logger.warn(`Notification fan-out (NEGOTIATION_FAILED-reject) failed: ${(err as Error).message}`);
+        }
 
       } else {
         // request_counter — calculate next offer
@@ -213,10 +388,31 @@ export class NegotiationService {
           // Round 7 reached → auto-fail (constitution: max 6 rounds)
           status = NegotiationStatus.FAILED;
           actionType = AiActionType.REJECT;
-          message = await this.formatMessageWithGemini('reject', undefined, roundNumber);
+          message = await this.formatMessageWithGemini('reject', undefined, roundNumber, negotiationId);
           this.logger.log(
             `Negotiation ${negotiationId} auto-failed — exceeded MAX_ROUNDS (${MAX_ROUNDS})`,
           );
+
+          // ── T17: NEGOTIATION_FAILED notification (max rounds) ──
+          try {
+            const notifResult = await this.notifications.createForBoth({
+              negotiationId,
+              buyerId: negotiation.buyerId,
+              sellerId: negotiation.sellerId,
+              type: 'NEGOTIATION_FAILED' as any,
+              payload: { action: 'max_rounds', roundNumber },
+              propertyTitle: negotiation.property.title ?? 'عقار',
+              tx: undefined,
+            });
+            if (notifResult.buyerNotificationId) {
+              this.notifications.sendWhatsApp(notifResult.buyerNotificationId).catch(() => {});
+            }
+            if (notifResult.sellerNotificationId) {
+              this.notifications.sendWhatsApp(notifResult.sellerNotificationId).catch(() => {});
+            }
+          } catch (err) {
+            this.logger.warn(`Notification fan-out (NEGOTIATION_FAILED-rounds) failed: ${(err as Error).message}`);
+          }
         } else {
           // Constitution formula: currentOffer + (gap × rate), clamped
           currentOffer = this.calculateCounterOffer(
@@ -255,7 +451,7 @@ export class NegotiationService {
             // Keep negotiating
             status = NegotiationStatus.ACTIVE;
             actionType = AiActionType.COUNTER;
-            message = await this.formatMessageWithGemini('counter', currentOffer, roundNumber);
+            message = await this.formatMessageWithGemini('counter', currentOffer, roundNumber, negotiationId);
           }
         }
       }
@@ -326,11 +522,239 @@ export class NegotiationService {
 
     return {
       negotiation,
-      offers: negotiation.offers,
-      deals: negotiation.deals,
+      offers: negotiation.offers ?? [],
+      deals: negotiation.deals ?? [],
       currentRound: negotiation.roundNumber,
       maxRounds: MAX_ROUNDS,
       latestEscalation: negotiation.escalations?.[0] ?? null,
+    };
+  }
+
+  // ─── T14: Message Query Methods ────────────────────────────
+
+  /**
+   * Verify that a user is the buyer or seller of a negotiation.
+   * Throws NotFoundException if the negotiation does not exist,
+   * BadRequestException if the user is neither party.
+   * Returns the user's role for downstream use.
+   */
+  async verifyMembership(
+    negotiationId: string,
+    userId: string,
+  ): Promise<{ role: 'BUYER' | 'SELLER'; buyerId: string; sellerId: string }> {
+    const negotiation = await this.prisma.negotiation.findUnique({
+      where: { id: negotiationId },
+      select: { buyerId: true, sellerId: true },
+    });
+    if (!negotiation) {
+      throw new NotFoundException(`Negotiation ${negotiationId} not found`);
+    }
+    if (negotiation.buyerId === userId) {
+      return { role: 'BUYER', ...negotiation };
+    }
+    if (negotiation.sellerId === userId) {
+      return { role: 'SELLER', ...negotiation };
+    }
+    throw new BadRequestException('Not authorized for this negotiation');
+  }
+
+  /**
+   * Get messages for a negotiation with cursor-based pagination.
+   * Cursor = messageId; returns messages strictly older than the cursor
+   * when paginating backwards. Default page size 50.
+   */
+  async getMessages(
+    negotiationId: string,
+    opts: { cursor?: string; limit?: number } = {},
+  ) {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+
+    let cursorCreatedAt: Date | undefined;
+    if (opts.cursor) {
+      const cursorRow = await this.prisma.negotiationMessage.findUnique({
+        where: { id: opts.cursor },
+        select: { createdAt: true, negotiationId: true },
+      });
+      if (cursorRow && cursorRow.negotiationId === negotiationId) {
+        cursorCreatedAt = cursorRow.createdAt;
+      }
+    }
+
+    const items = await this.prisma.negotiationMessage.findMany({
+      where: {
+        negotiationId,
+        ...(cursorCreatedAt && { createdAt: { lt: cursorCreatedAt } }),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    // Return chronological (asc) for direct render; expose nextCursor.
+    const ordered = items.slice().reverse();
+    const nextCursor =
+      items.length === limit ? items[items.length - 1].id : null;
+
+    return { items: ordered, nextCursor };
+  }
+
+  /**
+   * Mark all messages in a negotiation as read for the given user.
+   * Updates readByBuyerAt or readBySellerAt depending on the user's role.
+   */
+  async markAllRead(negotiationId: string, userId: string) {
+    const negotiation = await this.prisma.negotiation.findUnique({
+      where: { id: negotiationId },
+      select: { buyerId: true, sellerId: true },
+    });
+
+    if (!negotiation) {
+      throw new NotFoundException(`Negotiation ${negotiationId} not found`);
+    }
+
+    const isBuyer = negotiation.buyerId === userId;
+    const isSeller = negotiation.sellerId === userId;
+
+    if (!isBuyer && !isSeller) {
+      throw new BadRequestException('Not authorized for this negotiation');
+    }
+
+    const updateField = isBuyer ? 'readByBuyerAt' : 'readBySellerAt';
+    const now = new Date();
+
+    await this.prisma.negotiationMessage.updateMany({
+      where: {
+        negotiationId,
+        [updateField]: null,
+      },
+      data: { [updateField]: now },
+    });
+
+    return { markedRead: true };
+  }
+
+  async getBuyerNegotiation(negotiationId: string, buyerId: string) {
+    const negotiation = await this.prisma.negotiation.findUnique({
+      where: { id: negotiationId },
+      include: {
+        offers: { orderBy: { round: 'asc' } },
+        deals: true,
+        property: true,
+      },
+    });
+
+    if (!negotiation || negotiation.buyerId !== buyerId) {
+      throw new NotFoundException(`Negotiation ${negotiationId} not found`);
+    }
+
+    return {
+      negotiation,
+      offers: negotiation.offers ?? [],
+      deals: negotiation.deals ?? [],
+      currentRound: negotiation.roundNumber,
+      maxRounds: MAX_ROUNDS,
+    };
+  }
+
+  async getSellerNegotiation(negotiationId: string, sellerId: string) {
+    const negotiation = await this.prisma.negotiation.findUnique({
+      where: { id: negotiationId },
+      include: {
+        offers: { orderBy: { round: 'asc' } },
+        deals: true,
+        property: true,
+      },
+    });
+
+    if (!negotiation || negotiation.sellerId !== sellerId) {
+      throw new NotFoundException(`Negotiation ${negotiationId} not found`);
+    }
+
+    return {
+      negotiation,
+      offers: negotiation.offers ?? [],
+      deals: negotiation.deals ?? [],
+      currentRound: negotiation.roundNumber,
+      maxRounds: MAX_ROUNDS,
+    };
+  }
+
+  async submitBuyerReply(
+    negotiationId: string,
+    buyerId: string,
+    dto: {
+      responseType: 'accept' | 'reject' | 'counter' | 'opinion';
+      counterAmount?: number;
+      comment?: string;
+    },
+  ) {
+    const negotiation = await this.prisma.negotiation.findUnique({
+      where: { id: negotiationId },
+    });
+
+    if (!negotiation || negotiation.buyerId !== buyerId) {
+      throw new NotFoundException(`Negotiation ${negotiationId} not found`);
+    }
+    if (negotiation.status !== NegotiationStatus.ACTIVE) {
+      throw new BadRequestException(
+        `Negotiation ${negotiationId} is already ${negotiation.status}`,
+      );
+    }
+
+    if (dto.responseType === 'accept') {
+      return this.handleAction(negotiationId, 'accept');
+    }
+
+    if (dto.responseType === 'reject') {
+      return this.handleAction(negotiationId, 'reject');
+    }
+
+    if (dto.responseType === 'counter') {
+      if (!dto.counterAmount) {
+        throw new BadRequestException('counterAmount is required for counter replies');
+      }
+      return this.proposePrice(negotiationId, dto.counterAmount);
+    }
+
+    return this.processBuyerDecision(negotiation, dto.comment ?? '');
+  }
+
+  async processBuyerDecision(
+    negotiation: { id: string; currentOffer: Prisma.Decimal | number | null; status: NegotiationStatus },
+    comment: string,
+  ) {
+    const message = await this.withAiThinking(negotiation.id, () =>
+      this.gemma.chat(
+        'أنت مساعد تفاوض ذكي. استخدم المعلومات التالية لتوليد رد مهني موجز للبائع أو نصيحة للبائع بناءً على رأي المشتري.',
+        [],
+        `المشتري كتب: "${comment}". أعد صياغة هذا الرأي في رسالة محترمة للبائع واذكر الخطوة التالية التي ينبغي أن يقوم بها البائع بسرعة.`,
+      ),
+    );
+
+    const reply =
+      typeof message === 'string' && message.trim().length > 0
+        ? message.trim()
+        : 'شكراً، استلمنا رأيك وسنوافيك برد البائع قريباً.';
+
+    await this.prisma.aiLog
+      .create({
+        data: {
+          negotiationId: negotiation.id,
+          actionType: AiActionType.ASK,
+          message: reply,
+          data: {
+            responseType: 'opinion',
+            comment,
+          } as Prisma.InputJsonValue,
+        },
+      })
+      .catch((err) => this.logger.warn(`aiLog (buyer opinion) failed: ${err}`));
+
+    return {
+      negotiationId: negotiation.id,
+      responseType: 'opinion',
+      status: negotiation.status,
+      currentOffer: negotiation.currentOffer === null ? null : Number(negotiation.currentOffer),
+      message: reply,
     };
   }
 
@@ -385,6 +809,7 @@ export class NegotiationService {
     context: 'counter' | 'accept' | 'reject',
     price?: number,
     round?: number,
+    negotiationId?: string,
   ): Promise<string> {
     const fallback = this.formatMessage(context, price);
 
@@ -397,23 +822,19 @@ export class NegotiationService {
 
       const systemInstruction =
         'أنت مساعد تفاوض عقاري مؤدب. مهمتك فقط صياغة رسالة قصيرة بالعامية المصرية المهذبة ' +
-        'بناءً على السياق المُعطى. لا تقترح أسعاراً ولا تتخذ قرارات. ' +
-        'أعد JSON فقط بالشكل: { "message": "..." }';
+        'بناءً على السياق المُعطى. لا تقترح أسعاراً ولا تتخذ قرارات. أعد الرسالة فقط بدون أي شرح إضافي.';
 
-      const responseSchema = {
-        type: 'object',
-        properties: { message: { type: 'string' } },
-        required: ['message'],
-      };
+      const gemmaReply = negotiationId
+        ? await this.withAiThinking(negotiationId, () =>
+            this.gemma.chat(systemInstruction, [], prompt),
+          )
+        : await this.gemma.chat(systemInstruction, [], prompt);
 
-      const result = await this.gemini.sendMessage(prompt, systemInstruction, responseSchema);
-      const geminiMessage = result['message'];
-
-      if (typeof geminiMessage === 'string' && geminiMessage.trim().length > 0) {
-        return geminiMessage.trim();
+      if (typeof gemmaReply === 'string' && gemmaReply.trim().length > 0) {
+        return gemmaReply.trim();
       }
 
-      this.logger.warn(`Gemini returned empty message for context=${context}, using fallback`);
+      this.logger.warn(`Gemma returned empty message for context=${context}, using fallback`);
       return fallback;
     } catch (error) {
       this.logger.warn(
@@ -487,6 +908,7 @@ export class NegotiationService {
     propertyId: string,
     propertyType: PropertyType,
     finalPrice: number,
+    message?: string,
   ): Promise<{
     dealId: string;
     status: NegotiationStatus;
@@ -517,7 +939,7 @@ export class NegotiationService {
       dealId: deal.id,
       status: NegotiationStatus.AGREED,
       actionType: AiActionType.ACCEPT,
-      message: await this.formatMessageWithGemini('accept', finalPrice),
+      message: message ?? this.formatMessage('accept', finalPrice),
     };
   }
 
@@ -556,10 +978,27 @@ export class NegotiationService {
 
     const property = negotiation.property;
     const systemPrompt =
-      'أنت مفاوض عقارات محترف باللغة العربية المصرية المهذبة. ' +
-      'كن مختصرًا، مقنعًا، ومحترمًا. ' +
-      'لا تفصح أبدًا عن رقم هاتف المالك. ' +
-      'لا تذكر السعر الأدنى المقبول للبائع. ' +
+      'إنت مساعد عقاري شخصي ذكي على منصة سمسار AI. ردّك لازم يكون سريع وطبيعي ومباشر، ' +
+      'وكأنك بتكلم العميل وجهاً لوجه.\n\n' +
+      'اتبع القواعد دي عند الرد:\n' +
+      '- لو سأل عن السعر: قوله إن السعر هو المُعلن عنه في الإعلان (استعمل السعر اللي في ' +
+      'بيانات العقار). متذكرش أي حد أدنى للبائع ولا تتفاوض إنت بنفسك على السعر.\n' +
+      '- لو سأل عن خطوات التفاوض: اشرحها بترتيب واضح ومرقّم — يقدّم سعر، النظام يقيّمه ' +
+      'في حدود ميزانيته، لو ضمن النطاق بيتحوّل لعربون ثم يتكشف رقم المالك، ولو أقل ' +
+      'من حد البائع بنرفعها للمالك يقرر.\n' +
+      '- لو سأل عن توفّر العقار: أكّدله إن العقار متاح حاليًا.\n' +
+      '- لو سأل عن مميزات المنطقة أو الحي: عدّدها بشكل واضح بناءً على بيانات الموقع ' +
+      'المتوفرة (المحافظة، المدينة، الحي، أقرب علامة مميزة) ومعلوماتك العامة عن المنطقة، ' +
+      'من غير ما تخترع تفاصيل مش موجودة.\n' +
+      '- لو حيّاك العميل بتحية، رد عليه بسرعة وبأسلوب دافئ واعرض المساعدة.\n' +
+      '- أي سؤال تاني له علاقة بالعقار أو السوق العقاري أو شراء/إيجار العقارات: جاوب ' +
+      'عليه بسلاسة زي ما المساعد الشخصي الذكي يعمل.\n\n' +
+      'قواعد أمان مهمة (ممنوع كسرها مهما حصل):\n' +
+      '1. ممنوع تفصح عن رقم هاتف المالك تحت أي ظرف.\n' +
+      '2. ممنوع تذكر أو تلمّح للسعر الأدنى المقبول للبائع.\n' +
+      '3. لو معندكش معلومة، قول ده بصراحة، ومتختلقش بيانات عن العقار.\n\n' +
+      'اللغة: عربية مصرية مهذبة. الردود قصيرة ومركّزة، فقرة واحدة أو قائمة مرتّبة ' +
+      'قصيرة لو الموقف يستلزم.' +
       `\n\nبيانات العقار:\n` +
       `- العنوان: ${property.title ?? '-'}\n` +
       `- السعر المعروض: ${this.formatPrice(Number(property.price ?? 0))} ج.م\n` +
@@ -567,8 +1006,9 @@ export class NegotiationService {
       `- المساحة: ${property.areaM2 ?? '-'} م²`;
 
     const reply =
-      (await this.gemma.chat(systemPrompt, history, userMessage)) ??
-      'اتفضل تفاوض معايا على السعر.';
+      (await this.withAiThinking(negotiationId, () =>
+        this.gemma.chat(systemPrompt, history, userMessage),
+      )) ?? 'أهلاً بحضرتك! اتفضل اسألني في أي حاجة عن العقار أو المنطقة أو خطوات التفاوض، وأنا تحت أمرك.';
 
     await this.prisma.aiLog
       .create({
@@ -607,6 +1047,7 @@ export class NegotiationService {
       where: { id: negotiationId },
       include: { property: true, seller: true },
     });
+
     if (!negotiation) {
       throw new NotFoundException(`Negotiation ${negotiationId} not found`);
     }
@@ -618,11 +1059,11 @@ export class NegotiationService {
 
     const property = negotiation.property;
     const listed = Number(property.price ?? 0);
-    const minPrice = property.minPrice
-      ? Number(property.minPrice)
+    const minPrice = (property as any).minPrice
+      ? Number((property as any).minPrice)
       : this.round2dp(listed * 0.9);
-    const maxPrice = property.maxPrice
-      ? Number(property.maxPrice)
+    const maxPrice = (property as any).maxPrice
+      ? Number((property as any).maxPrice)
       : this.round2dp(listed * 1.1);
 
     let decision: 'IN_BAND' | 'BELOW_MIN' | 'ABOVE_MAX';
@@ -635,6 +1076,9 @@ export class NegotiationService {
         decision === 'ABOVE_MAX' ? maxPrice : proposedPrice,
       );
 
+      // Generate the AI message BEFORE the transaction to avoid tx timeout
+      const acceptMessage = await this.formatMessageWithGemini('accept', agreedPrice, undefined, negotiationId);
+
       const accept = await this.prisma.$transaction(async (tx) => {
         const result = await this.executeAccept(
           tx,
@@ -644,6 +1088,7 @@ export class NegotiationService {
           negotiation.propertyId,
           property.type,
           agreedPrice,
+          acceptMessage,
         );
 
         await tx.negotiation.update({
@@ -671,6 +1116,29 @@ export class NegotiationService {
         negotiation.buyerId,
       );
 
+      // ── T16: NEGOTIATION_AGREED notification (auto-accept) ──
+      try {
+        const priceStr = this.formatPrice(agreedPrice);
+        const notifResult = await this.notifications.createForBoth({
+          negotiationId,
+          buyerId: negotiation.buyerId,
+          sellerId: negotiation.sellerId,
+          type: 'NEGOTIATION_AGREED' as any,
+          payload: { agreedPrice, decision },
+          propertyTitle: property.title ?? 'عقار',
+          price: priceStr,
+          tx: undefined,
+        });
+        if (notifResult.buyerNotificationId) {
+          this.notifications.sendWhatsApp(notifResult.buyerNotificationId).catch(() => {});
+        }
+        if (notifResult.sellerNotificationId) {
+          this.notifications.sendWhatsApp(notifResult.sellerNotificationId).catch(() => {});
+        }
+      } catch (err) {
+        this.logger.warn(`Notification fan-out (NEGOTIATION_AGREED) failed: ${(err as Error).message}`);
+      }
+
       return {
         decision,
         message: accept.message,
@@ -682,11 +1150,14 @@ export class NegotiationService {
     }
 
     // BELOW_MIN → escalate to seller
+    // NOTE: `token` has a unique constraint; we insert a per-row placeholder
+    // first (using a random UUID, not Date.now() which collides in fast
+    // back-to-back calls), then overwrite with a JWT signed with the row's id.
     const escalation = await this.prisma.negotiationEscalation.create({
       data: {
         negotiationId,
         buyerOffer: proposedPrice,
-        token: 'pending',
+        token: `pending-${randomUUID()}`,
         status: 'PENDING',
       },
     });
@@ -702,6 +1173,30 @@ export class NegotiationService {
     await this.escalateToSeller(negotiation.seller.phone, property.title ?? 'عقار', proposedPrice, token).catch(
       (err) => this.logger.warn(`escalateToSeller failed: ${err}`),
     );
+
+    // ── T12: OFFER_PROPOSED notification fan-out ────────────────
+    try {
+      const notifResult = await this.notifications.createForBoth({
+        negotiationId,
+        buyerId: negotiation.buyerId,
+        sellerId: negotiation.sellerId,
+        type: 'OFFER_PROPOSED' as any,
+        payload: { proposedPrice, escalationId: escalation.id },
+        propertyTitle: property.title ?? 'عقار',
+        price: this.formatPrice(proposedPrice),
+        escalationToken: token,
+        tx: undefined, // Outside the main transaction — best effort
+      });
+      // Dispatch WhatsApp post-commit (best-effort, non-blocking)
+      if (notifResult.sellerNotificationId) {
+        this.notifications.sendWhatsApp(notifResult.sellerNotificationId).catch(() => {});
+      }
+      if (notifResult.buyerNotificationId) {
+        this.notifications.sendWhatsApp(notifResult.buyerNotificationId).catch(() => {});
+      }
+    } catch (err) {
+      this.logger.warn(`Notification fan-out (OFFER_PROPOSED) failed: ${(err as Error).message}`);
+    }
 
     await this.prisma.aiLog.create({
       data: {
@@ -776,15 +1271,16 @@ export class NegotiationService {
 
     return {
       escalationId: escalation.id,
+      negotiationId: escalation.negotiationId,
       buyerOffer: Number(escalation.buyerOffer),
       status: escalation.status,
       property: {
-        id: escalation.negotiation.property.id,
-        title: escalation.negotiation.property.title,
-        price: Number(escalation.negotiation.property.price ?? 0),
-        media: escalation.negotiation.property.media,
+        id: (escalation.negotiation as any).property.id,
+        title: (escalation.negotiation as any).property.title,
+        price: Number((escalation.negotiation as any).property.price ?? 0),
+        media: (escalation.negotiation as any).property.media,
       },
-      buyerName: escalation.negotiation.buyer.name,
+      buyerName: (escalation.negotiation as any).buyer.name,
       createdAt: escalation.createdAt,
     };
   }
@@ -829,11 +1325,15 @@ export class NegotiationService {
     }
 
     const negotiation = escalation.negotiation;
-    const buyerOffer = Number(escalation.buyerOffer);
 
     if (action === 'ACCEPT') {
-      const accepted = await this.prisma.$transaction(async (tx) => {
-        const result = await this.executeAccept(
+      const buyerOffer = Number(escalation.buyerOffer);
+
+      // Generate message BEFORE transaction to avoid tx timeout
+      const acceptMsg = await this.formatMessageWithGemini('accept', buyerOffer, undefined, negotiation.id);
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        const accept = await this.executeAccept(
           tx,
           negotiation.id,
           negotiation.buyerId,
@@ -841,11 +1341,14 @@ export class NegotiationService {
           negotiation.propertyId,
           negotiation.property.type,
           buyerOffer,
+          acceptMsg,
         );
+
         await tx.negotiation.update({
           where: { id: negotiation.id },
           data: { status: NegotiationStatus.AGREED, currentOffer: buyerOffer },
         });
+
         await tx.negotiationEscalation.update({
           where: { id: escalation.id },
           data: {
@@ -854,27 +1357,61 @@ export class NegotiationService {
             resolvedAt: new Date(),
           },
         });
-        await tx.aiLog.create({
-          data: {
-            negotiationId: negotiation.id,
-            actionType: AiActionType.ACCEPT,
-            message: 'Seller accepted via escalation link.',
-            data: { escalationId: escalation.id, buyerOffer } as Prisma.InputJsonValue,
-          },
-        });
-        return result;
+
+        return accept;
       });
 
       const deposit = await this.payments.initiateDeposit(
-        accepted.dealId,
+        result.dealId,
         negotiation.buyerId,
       );
+
+      // ── T13: OFFER_ACCEPTED + NEGOTIATION_AGREED notifications ──
+      try {
+        const priceStr = this.formatPrice(buyerOffer);
+        const notifResult = await this.notifications.createForBoth({
+          negotiationId: negotiation.id,
+          buyerId: negotiation.buyerId,
+          sellerId: negotiation.sellerId,
+          type: 'OFFER_ACCEPTED' as any,
+          payload: { buyerOffer },
+          propertyTitle: negotiation.property.title ?? 'عقار',
+          price: priceStr,
+          tx: undefined,
+        });
+        if (notifResult.buyerNotificationId) {
+          this.notifications.sendWhatsApp(notifResult.buyerNotificationId).catch(() => {});
+        }
+        if (notifResult.sellerNotificationId) {
+          this.notifications.sendWhatsApp(notifResult.sellerNotificationId).catch(() => {});
+        }
+
+        // Also send NEGOTIATION_AGREED to both
+        const agreedResult = await this.notifications.createForBoth({
+          negotiationId: negotiation.id,
+          buyerId: negotiation.buyerId,
+          sellerId: negotiation.sellerId,
+          type: 'NEGOTIATION_AGREED' as any,
+          payload: { agreedPrice: buyerOffer },
+          propertyTitle: negotiation.property.title ?? 'عقار',
+          price: priceStr,
+          tx: undefined,
+        });
+        if (agreedResult.buyerNotificationId) {
+          this.notifications.sendWhatsApp(agreedResult.buyerNotificationId).catch(() => {});
+        }
+        if (agreedResult.sellerNotificationId) {
+          this.notifications.sendWhatsApp(agreedResult.sellerNotificationId).catch(() => {});
+        }
+      } catch (err) {
+        this.logger.warn(`Notification fan-out (OFFER_ACCEPTED) failed: ${(err as Error).message}`);
+      }
 
       return {
         escalationId: escalation.id,
         action: 'ACCEPT',
         negotiationStatus: NegotiationStatus.AGREED,
-        dealId: accepted.dealId,
+        dealId: result.dealId,
         paymentId: deposit.paymentId,
       };
     }
@@ -885,6 +1422,7 @@ export class NegotiationService {
           where: { id: negotiation.id },
           data: { status: NegotiationStatus.FAILED },
         });
+
         await tx.negotiationEscalation.update({
           where: { id: escalation.id },
           data: {
@@ -893,15 +1431,24 @@ export class NegotiationService {
             resolvedAt: new Date(),
           },
         });
-        await tx.aiLog.create({
-          data: {
-            negotiationId: negotiation.id,
-            actionType: AiActionType.REJECT,
-            message: 'Seller rejected via escalation link.',
-            data: { escalationId: escalation.id } as Prisma.InputJsonValue,
-          },
-        });
       });
+
+      // ── T14: OFFER_REJECTED notification ────────────────────
+      try {
+        const notifId = await this.notifications.createForUser({
+          userId: negotiation.buyerId,
+          type: 'OFFER_REJECTED' as any,
+          payload: { buyerOffer: Number(escalation.buyerOffer) },
+          propertyTitle: negotiation.property.title ?? 'عقار',
+          negotiationId: negotiation.id,
+          role: 'buyer',
+        });
+        if (notifId) {
+          this.notifications.sendWhatsApp(notifId).catch(() => {});
+        }
+      } catch (err) {
+        this.logger.warn(`Notification fan-out (OFFER_REJECTED) failed: ${(err as Error).message}`);
+      }
 
       return {
         escalationId: escalation.id,
@@ -911,26 +1458,25 @@ export class NegotiationService {
     }
 
     // COUNTER
-    if (typeof counterPrice !== 'number' || !(counterPrice > 0)) {
-      throw new BadRequestException('counterPrice is required for COUNTER');
+    if (!counterPrice || counterPrice <= 0) {
+      throw new BadRequestException('counterPrice is required for COUNTER action');
     }
-    const newRound = negotiation.roundNumber + 1;
+
     await this.prisma.$transaction(async (tx) => {
+      await tx.negotiation.update({
+        where: { id: negotiation.id },
+        data: { currentOffer: counterPrice },
+      });
+
       await tx.offer.create({
         data: {
           negotiationId: negotiation.id,
           amount: counterPrice,
-          round: newRound,
+          round: negotiation.roundNumber + 1,
           createdBy: 'SELLER',
         },
       });
-      await tx.negotiation.update({
-        where: { id: negotiation.id },
-        data: {
-          currentOffer: counterPrice,
-          roundNumber: newRound,
-        },
-      });
+
       await tx.negotiationEscalation.update({
         where: { id: escalation.id },
         data: {
@@ -940,19 +1486,25 @@ export class NegotiationService {
           resolvedAt: new Date(),
         },
       });
-      await tx.aiLog.create({
-        data: {
-          negotiationId: negotiation.id,
-          actionType: AiActionType.COUNTER,
-          message: `Seller countered at ${this.formatPrice(counterPrice)} EGP.`,
-          data: {
-            escalationId: escalation.id,
-            counterPrice,
-            round: newRound,
-          } as Prisma.InputJsonValue,
-        },
-      });
     });
+
+    // ── T15: OFFER_COUNTERED notification ────────────────────
+    try {
+      const notifId = await this.notifications.createForUser({
+        userId: negotiation.buyerId,
+        type: 'OFFER_COUNTERED' as any,
+        payload: { counterPrice },
+        propertyTitle: negotiation.property.title ?? 'عقار',
+        price: this.formatPrice(counterPrice),
+        negotiationId: negotiation.id,
+        role: 'buyer',
+      });
+      if (notifId) {
+        this.notifications.sendWhatsApp(notifId).catch(() => {});
+      }
+    } catch (err) {
+      this.logger.warn(`Notification fan-out (OFFER_COUNTERED) failed: ${(err as Error).message}`);
+    }
 
     return {
       escalationId: escalation.id,

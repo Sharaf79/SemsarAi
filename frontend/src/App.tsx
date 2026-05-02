@@ -16,6 +16,9 @@ import { FavoritesPage } from './pages/FavoritesPage';
 import { HelpPage } from './pages/HelpPage';
 import { AdminReviewPage } from './pages/AdminReviewPage';
 import { SellerActionPage } from './pages/SellerActionPage';
+import { AddPropertyWizardPage } from './pages/PropertyWizard/AddPropertyWizardPage';
+import { SearchChatPage } from './pages/SearchChatPage';
+import { SellerActionRedirect } from './pages/SellerActionRedirect';
 import { ChatWidget } from './components/ChatWidget';
 
 const queryClient = new QueryClient({
@@ -38,6 +41,8 @@ export const App: React.FC = () => {
               <Route path="/" element={<HomePage />} />
               <Route path="/property/:id" element={<PropertyPage />} />
               <Route path="/negotiation/:id" element={<NegotiationPage />} />
+              {/* Legacy seller-action deep-link → resolves token & redirects to unified negotiation page */}
+              <Route path="/seller-action/:token" element={<SellerActionRedirect />} />
               <Route path="/payment/:paymentId" element={<MockPaymentPage />} />
               <Route path="/listing-payment/:creditId" element={<ListingPaymentPage />} />
               <Route path="/profile" element={<ProfilePage />} />
