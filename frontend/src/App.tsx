@@ -11,6 +11,7 @@ import { ListingPaymentPage } from './pages/ListingPaymentPage';
 import { PropertyPage } from './pages/PropertyPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { MyListingsPage } from './pages/MyListingsPage';
+import { AddListingPage } from './pages/AddListingPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { HelpPage } from './pages/HelpPage';
 import { AdminReviewPage } from './pages/AdminReviewPage';
@@ -40,6 +41,7 @@ export const App: React.FC = () => {
               <Route path="/listing-payment/:creditId" element={<ListingPaymentPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/my-listings" element={<MyListingsPage />} />
+              <Route path="/add-listing" element={<AddListingPage />} />
               <Route path="/favorites" element={<FavoritesPage />} />
               <Route path="/help" element={<HelpPage />} />
               <Route path="/admin/review" element={<AdminReviewPage />} />
