@@ -22,7 +22,7 @@ export interface Property {
   bedrooms: number | null;
   bathrooms: number | null;
   areaM2: string | null;
-  
+
   // -- Extended Apartment Fields --
   apartmentType?: string | null;
   ownershipType?: string | null;
@@ -48,6 +48,10 @@ export interface Property {
   propertyStatus: PropertyStatus;
   createdAt: string;
   media: PropertyMedia[];
+
+  /** Negotiation band — only populated when the request is from the owner. */
+  minPrice?: string | null;
+  maxPrice?: string | null;
 }
 
 export interface PropertiesMeta {

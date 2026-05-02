@@ -15,6 +15,7 @@ import { AddListingPage } from './pages/AddListingPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { HelpPage } from './pages/HelpPage';
 import { AdminReviewPage } from './pages/AdminReviewPage';
+import { SellerActionPage } from './pages/SellerActionPage';
 import { ChatWidget } from './components/ChatWidget';
 
 const queryClient = new QueryClient({
@@ -45,6 +46,7 @@ export const App: React.FC = () => {
               <Route path="/favorites" element={<FavoritesPage />} />
               <Route path="/help" element={<HelpPage />} />
               <Route path="/admin/review" element={<AdminReviewPage />} />
+              <Route path="/seller-action/:token" element={<SellerActionPage />} />
               <Route path="*" element={<HomePage />} />
             </Routes>
             {/* Floating AI chat — persists across all pages */}

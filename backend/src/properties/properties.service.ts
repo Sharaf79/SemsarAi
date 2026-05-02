@@ -134,14 +134,20 @@ export class PropertiesService {
 
   // ─── GET /properties/:id ─────────────────────────────────────
 
-  async findOne(id: string) {
+  async findOne(id: string, requesterId?: string) {
     const property = await this.prisma.property.findUnique({
       where: { id },
-      select: PUBLIC_PROPERTY_SELECT,
+      select: { ...PUBLIC_PROPERTY_SELECT, userId: true, minPrice: true, maxPrice: true },
     });
-    
+
     if (!property) {
       throw new NotFoundException(`Property with ID ${id} not found`);
+    }
+
+    // Strip min/max for non-owners (used internally by negotiation engine)
+    const isOwner = requesterId && property.userId === requesterId;
+    if (!isOwner) {
+      return { ...property, minPrice: null, maxPrice: null };
     }
 
     return property;
@@ -259,6 +265,8 @@ export class PropertiesService {
         ...(dto.propertyKind !== undefined
           ? { propertyKind: dto.propertyKind }
           : {}),
+        ...(dto.minPrice !== undefined ? { minPrice: dto.minPrice } : {}),
+        ...(dto.maxPrice !== undefined ? { maxPrice: dto.maxPrice } : {}),
       },
       select: PUBLIC_PROPERTY_SELECT,
     });
