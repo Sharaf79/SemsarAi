@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsNumber,
   IsEnum,
+  IsPositive,
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -59,4 +60,16 @@ export class UpdatePropertyDto {
   @IsOptional()
   @IsEnum(PropertyKind)
   propertyKind?: PropertyKind;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Type(() => Number)
+  minPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Type(() => Number)
+  maxPrice?: number;
 }

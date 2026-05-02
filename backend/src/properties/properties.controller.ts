@@ -15,6 +15,7 @@ import {
 import { PropertiesService } from './properties.service';
 import { QueryPropertiesDto, UpdatePropertyStatusDto, UpdatePropertyDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/guards/jwt-auth.guard';
 
@@ -55,9 +56,13 @@ export class PropertiesController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+  @UseGuards(OptionalJwtAuthGuard)
+  async findOne(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() user?: JwtPayload,
+  ) {
     this.logger.debug(`GET /properties/${id}`);
-    const property = await this.propertiesService.findOne(id);
+    const property = await this.propertiesService.findOne(id, user?.sub);
     return { data: property };
   }
 

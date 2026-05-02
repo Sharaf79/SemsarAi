@@ -8,6 +8,15 @@ export async function initiatePayment(dealId: string): Promise<PaymentInfo> {
   return data;
 }
 
+/** Initiate a fixed 100 EGP deposit payment for a negotiation deal. */
+export async function initiateDeposit(dealId: string): Promise<PaymentInfo> {
+  const { data } = await apiClient.post<PaymentInfo>(
+    '/payments/initiate-deposit',
+    { dealId },
+  );
+  return data;
+}
+
 /**
  * Mock success callback — in production this is called by Paymob.
  * Sends the payment amount for server-side validation.
