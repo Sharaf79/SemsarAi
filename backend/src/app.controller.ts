@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AppService } from './app.service';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -7,11 +8,26 @@ export class AppController {
   constructor(
     private readonly appService: AppService,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get()
   getHello(): string {
     return this.appService.getHello();
+  }
+
+  // ─── Feature Flags (T27) ──────────────────────────────────
+
+  /**
+   * Public endpoint returning current feature flag state.
+   * Frontend polls this to decide whether to use Socket.IO or REST polling.
+   */
+  @Get('api/feature-flags')
+  getFeatureFlags(): Record<string, boolean> {
+    const negotiationV2 = this.config.get<boolean>('NEGOTIATION_V2', true);
+    return {
+      NEGOTIATION_V2: negotiationV2,
+    };
   }
 
   /**

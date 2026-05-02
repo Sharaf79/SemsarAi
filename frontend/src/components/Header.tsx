@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../store/AuthContext';
-import { useChatContext } from '../store/ChatContext';
 import { UserMenu } from './UserMenu';
+import CreateRequestModal from './CreateRequestModal';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   onLoginClick: () => void;
@@ -10,7 +11,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
   const { isAuthenticated, user } = useAuth();
-  const { openChat } = useChatContext();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -30,6 +30,8 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick }) => {
         >
           اضافة عقار 🏠
         </button>
+
+        {isAuthenticated && <NotificationBell />}
 
         {isAuthenticated && user ? (
           <div className="header__menu-anchor">

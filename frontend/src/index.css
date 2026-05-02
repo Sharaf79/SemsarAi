@@ -1193,6 +1193,27 @@ select:focus, input.text-input:focus {
   font-weight: 600;
 }
 
+/* ── REALTIME DIVIDER (Sprint 3) ─────────────────────────────── */
+.neg-realtime-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  align-self: center;
+}
+.neg-realtime-divider::before,
+.neg-realtime-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(0,0,0,.15);
+}
+.neg-realtime-divider span {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* ── NEG ACTION BAR ──────────────────────────────────────────── */
 .neg-action-bar {
   position: fixed;
@@ -1226,6 +1247,18 @@ select:focus, input.text-input:focus {
   outline: none;
 }
 .neg-action-bar__counter-input:focus { border-color: var(--primary); }
+
+.neg-snippet-card {
+  background: rgba(255,255,255,.9);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin: 0 16px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
 
 /* ── PAYMENT STEP ────────────────────────────────────────────── */
 .payment-step {
@@ -1983,4 +2016,128 @@ select:focus, input.text-input:focus {
 }
 .seller-action__counter {
   margin-top: 16px;
+}
+
+/* ─── Notification Bell ─── */
+.notif-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+}
+.notif-bell__btn {
+  position: relative;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.notif-bell__btn:hover { background: #f3f4f6; }
+.notif-bell__icon { font-size: 18px; line-height: 1; }
+.notif-bell__badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 6px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.4;
+}
+.notif-bell__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 360px;
+  max-height: 480px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.notif-bell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.notif-bell__mark-all {
+  background: transparent;
+  border: 0;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+}
+.notif-bell__list {
+  overflow-y: auto;
+  max-height: 420px;
+}
+.notif-bell__empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+.notif-bell__item {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #f9fafb;
+  text-align: right;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.notif-bell__item:hover { background: #f9fafb; }
+.notif-bell__item--unread { background: #eff6ff; }
+.notif-bell__item--unread:hover { background: #dbeafe; }
+.notif-bell__item-icon { font-size: 20px; flex: 0 0 auto; }
+.notif-bell__item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.notif-bell__item-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+}
+.notif-bell__item-text {
+  font-size: 12px;
+  color: #4b5563;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.notif-bell__item-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+.notif-bell__item-dot {
+  width: 8px;
+  height: 8px;
+  background: #2563eb;
+  border-radius: 999px;
+  margin-top: 6px;
+  flex: 0 0 auto;
 }

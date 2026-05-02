@@ -10,6 +10,7 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        timeout: 90_000, // LLM-powered endpoints can take 50+ seconds (gemma4 thinking mode)
       },
     },
   },

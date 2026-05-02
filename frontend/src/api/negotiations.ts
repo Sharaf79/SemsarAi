@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { NegotiationResult, ActionResult, NegotiationAction } from '../types';
+import type { NegotiationResult, ActionResult, NegotiationAction, NegotiationStatus } from '../types';
 
 export async function startNegotiation(
   propertyId: string,
@@ -56,6 +56,57 @@ export async function getNegotiation(negotiationId: string): Promise<{
   };
 }
 
+export interface BuyerReplyDto {
+  responseType: 'accept' | 'reject' | 'counter' | 'opinion';
+  counterAmount?: number;
+  comment?: string;
+}
+
+export type BuyerReplyResult =
+  | (ActionResult & { status?: NegotiationStatus })
+  | (ProposePriceResult & { status?: NegotiationStatus })
+  | {
+      negotiationId: string;
+      responseType: 'opinion';
+      status: NegotiationStatus;
+      currentOffer: number | null;
+      message: string;
+    };
+
+export async function getBuyerNegotiation(negotiationId: string): Promise<{
+  success: boolean;
+  data: {
+    negotiation: NegotiationResult;
+    currentRound: number;
+    maxRounds: number;
+    offers: { id: string; amount: number; round: number; createdBy: string }[];
+    deals: { id: string; finalPrice: number; status: string }[];
+  };
+}> {
+  const { data } = await apiClient.get(`/negotiations/${negotiationId}/buyer`);
+  return data as {
+    success: boolean;
+    data: {
+      negotiation: NegotiationResult;
+      currentRound: number;
+      maxRounds: number;
+      offers: { id: string; amount: number; round: number; createdBy: string }[];
+      deals: { id: string; finalPrice: number; status: string }[];
+    };
+  };
+}
+
+export async function submitBuyerReply(
+  negotiationId: string,
+  payload: BuyerReplyDto,
+): Promise<BuyerReplyResult> {
+  const { data } = await apiClient.post<{
+    success: boolean;
+    data: BuyerReplyResult;
+  }>(`/negotiations/${negotiationId}/buyer/reply`, payload);
+  return data.data;
+}
+
 // ─── Voice/Chat Negotiation ─────────────────────────────────
 
 export interface ChatHistoryItem {
@@ -98,6 +149,7 @@ export async function proposePrice(
 
 export interface SellerEscalationSummary {
   escalationId: string;
+  negotiationId: string;
   buyerOffer: number;
   status: 'PENDING' | 'RESOLVED';
   property: {
@@ -144,4 +196,50 @@ export async function submitSellerAction(
     };
   }>(`/negotiations/seller-action/${token}`, { action, counterPrice });
   return data.data;
+}
+
+// ─── T19: New REST endpoints for unified negotiation ────────
+
+export interface NegotiationMessage {
+  id: string;
+  negotiationId: string;
+  senderRole: 'BUYER' | 'SELLER' | 'AI' | 'SYSTEM';
+  senderUserId: string | null;
+  body: string;
+  kind: 'TEXT' | 'OFFER' | 'ACTION' | 'NOTICE';
+  meta: Record<string, unknown> | null;
+  clientId: string | null;
+  createdAt: string;
+  readByBuyerAt: string | null;
+  readBySellerAt: string | null;
+}
+
+export async function getMessages(negotiationId: string): Promise<{
+  success: boolean;
+  data: NegotiationMessage[];
+}> {
+  const { data } = await apiClient.get<{
+    success: boolean;
+    data: NegotiationMessage[];
+  }>(`/negotiations/${negotiationId}/messages`);
+  return data;
+}
+
+export async function sendMessage(
+  negotiationId: string,
+  body: string,
+  clientId?: string,
+): Promise<{ success: boolean; data: NegotiationMessage }> {
+  const { data } = await apiClient.post<{
+    success: boolean;
+    data: NegotiationMessage;
+  }>(`/negotiations/${negotiationId}/messages`, { body, clientId });
+  return data;
+}
+
+export async function markRead(negotiationId: string): Promise<{ success: boolean }> {
+  const { data } = await apiClient.post<{ success: boolean }>(
+    `/negotiations/${negotiationId}/read`,
+  );
+  return data;
 }

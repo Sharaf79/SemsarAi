@@ -3,10 +3,17 @@
   "configurations": [
     {
       "name": "frontend",
+      "runtimeExecutable": "./node_modules/.bin/vite",
+      "runtimeArgs": [],
+      "port": 5174,
+      "cwd": "/Users/sherif/Projects/SemsarAi/frontend"
+    },
+    {
+      "name": "backend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 5173,
-      "cwd": "frontend"
+      "runtimeArgs": ["run", "start:dev"],
+      "port": 3000,
+      "cwd": "backend"
     }
   ]
 }

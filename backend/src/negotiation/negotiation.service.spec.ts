@@ -10,11 +10,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   NegotiationStatus,
   PropertyStatus,
@@ -25,8 +21,15 @@ import {
 
 import { NegotiationService } from './negotiation.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { LLM_PROVIDER } from '../llm/llm-provider.interface';
+import { InvoiceExtractorService } from './invoice-extractor.service';
+import { GemmaClient } from './gemma.client';
+import { JwtService } from '@nestjs/jwt';
+import { PaymentsService } from '../payments/payments.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { NegotiationGateway } from './negotiation.gateway';
 import { INITIAL_OFFER_FACTOR, MAX_ROUNDS } from './constants/negotiation.constants';
+import { NotificationsService } from '../notifications/notifications.service';
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
 
@@ -97,11 +100,19 @@ function makePrisma() {
   return prisma;
 }
 
-/** Build a GeminiService mock that resolves with a polished message by default */
-function makeGemini(): jest.Mocked<GeminiService> {
+/** Build an LLM provider mock */
+function makeLlm() {
   return {
-    sendMessage: jest.fn().mockResolvedValue({ message: 'رسالة من Gemini' }),
-  } as unknown as jest.Mocked<GeminiService>;
+    sendMessage: jest.fn().mockResolvedValue({ message: 'رسالة من LLM' }),
+    chat: jest.fn().mockResolvedValue({ message: 'رسالة من LLM' }),
+  };
+}
+
+/** Build an InvoiceExtractorService mock */
+function makeInvoiceExtractor() {
+  return {
+    extract: jest.fn().mockResolvedValue({}),
+  };
 }
 
 // ── Test suite ────────────────────────────────────────────────────────────────
@@ -109,17 +120,51 @@ function makeGemini(): jest.Mocked<GeminiService> {
 describe('NegotiationService', () => {
   let service: NegotiationService;
   let prisma:   ReturnType<typeof makePrisma>;
-  let gemini:   jest.Mocked<GeminiService>;
 
   beforeEach(async () => {
     prisma = makePrisma();
-    gemini = makeGemini();
+    const llm = makeLlm();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NegotiationService,
         { provide: PrismaService, useValue: prisma },
-        { provide: GeminiService, useValue: gemini },
+        { provide: LLM_PROVIDER, useValue: llm },
+        { provide: InvoiceExtractorService, useValue: makeInvoiceExtractor() },
+        { provide: GemmaClient, useValue: { chat: jest.fn().mockResolvedValue(null) } },
+        { provide: JwtService, useValue: { sign: jest.fn().mockReturnValue('tok'), verify: jest.fn() } },
+        {
+          provide: PaymentsService,
+          useValue: {
+            createDepositForDeal: jest.fn().mockResolvedValue({ paymentId: 'p1' }),
+          },
+        },
+        {
+          provide: WhatsAppService,
+          useValue: {
+            sendEscalationMessage: jest.fn().mockResolvedValue(undefined),
+            sendTextMessage: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: {
+            createForBoth: jest.fn().mockResolvedValue({
+              buyerNotificationId: 'notif-b1',
+              sellerNotificationId: 'notif-s1',
+            }),
+            createForUser: jest.fn().mockResolvedValue('notif-u1'),
+            sendWhatsApp: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NegotiationGateway,
+          useValue: {
+            emitMessage: jest.fn(),
+            emitAiThinking: jest.fn(),
+            emitNegotiationUpdate: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -224,12 +269,174 @@ describe('NegotiationService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw ConflictException when an active negotiation already exists', async () => {
-      prisma.negotiation.findFirst.mockResolvedValue(makeNegotiation());
+    it('should resume the existing active negotiation when one exists', async () => {
+      const existing = makeNegotiation();
+      prisma.negotiation.findFirst.mockResolvedValue(existing);
+
+      const result = await service.startNegotiation(PROPERTY_ID, BUYER_ID, 1_200_000);
+
+      expect(result.negotiationId).toBe(existing.id);
+      expect(result.status).toBe(NegotiationStatus.ACTIVE);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getBuyerNegotiation()', () => {
+    it('should return negotiation details for the buyer', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(makeNegotiation());
+
+      const result = await service.getBuyerNegotiation(NEGOTIATION_ID, BUYER_ID);
+
+      expect(result.negotiation.id).toBe(NEGOTIATION_ID);
+      expect(result.negotiation.buyerId).toBe(BUYER_ID);
+      expect(result.offers).toBeDefined();
+      expect(result.currentRound).toBe(1);
+    });
+
+    it('should throw NotFoundException if the negotiation does not belong to the buyer', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(
+        makeNegotiation({ buyerId: '11111111-1111-4111-8111-111111111111' }),
+      );
 
       await expect(
-        service.startNegotiation(PROPERTY_ID, BUYER_ID, 1_200_000),
-      ).rejects.toThrow(ConflictException);
+        service.getBuyerNegotiation(NEGOTIATION_ID, BUYER_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getSellerNegotiation()', () => {
+    it('should return negotiation details for the seller', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(makeNegotiation());
+
+      const result = await service.getSellerNegotiation(NEGOTIATION_ID, SELLER_ID);
+
+      expect(result.negotiation.id).toBe(NEGOTIATION_ID);
+      expect(result.negotiation.sellerId).toBe(SELLER_ID);
+      expect(result.offers).toBeDefined();
+      expect(result.currentRound).toBe(1);
+    });
+
+    it('should throw NotFoundException if the negotiation does not belong to the seller', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(
+        makeNegotiation({ sellerId: '22222222-2222-4222-8222-222222222222' }),
+      );
+
+      await expect(
+        service.getSellerNegotiation(NEGOTIATION_ID, SELLER_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('submitBuyerReply()', () => {
+    it('should delegate accept replies to handleAction', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(makeNegotiation());
+      const handleActionSpy = jest
+        .spyOn(service, 'handleAction')
+        .mockResolvedValue({
+          negotiationId: NEGOTIATION_ID,
+          action: 'accept',
+          status: NegotiationStatus.AGREED,
+          roundNumber: 1,
+          currentOffer: 850_000,
+          dealId: DEAL_ID,
+          autoAccepted: false,
+          message: 'accepted',
+        });
+
+      const result = await service.submitBuyerReply(NEGOTIATION_ID, BUYER_ID, {
+        responseType: 'accept',
+      });
+
+      expect(handleActionSpy).toHaveBeenCalledWith(NEGOTIATION_ID, 'accept');
+      expect((result as any).action).toBe('accept');
+    });
+
+    it('should delegate counter replies to proposePrice', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(makeNegotiation());
+      const proposeSpy = jest
+        .spyOn(service, 'proposePrice')
+        .mockResolvedValue({
+          decision: 'IN_BAND',
+          message: 'counter accepted',
+          agreedPrice: 900_000,
+        });
+
+      const result = await service.submitBuyerReply(NEGOTIATION_ID, BUYER_ID, {
+        responseType: 'counter',
+        counterAmount: 900_000,
+      });
+
+      expect(proposeSpy).toHaveBeenCalledWith(NEGOTIATION_ID, 900_000);
+      expect((result as any).decision).toBe('IN_BAND');
+    });
+
+    it('should process opinion replies through Gemma', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(makeNegotiation());
+      const opinionSpy = jest
+        .spyOn(service, 'processBuyerDecision')
+        .mockResolvedValue({
+          negotiationId: NEGOTIATION_ID,
+          responseType: 'opinion',
+          status: NegotiationStatus.ACTIVE,
+          currentOffer: 850_000,
+          message: 'شكراً على رأيك',
+        });
+
+      const result = await service.submitBuyerReply(NEGOTIATION_ID, BUYER_ID, {
+        responseType: 'opinion',
+        comment: 'أرغب في مراجعة السعر مرة أخرى',
+      });
+
+      expect(opinionSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ id: NEGOTIATION_ID }),
+        'أرغب في مراجعة السعر مرة أخرى',
+      );
+      expect((result as any).responseType).toBe('opinion');
+    });
+
+    it('should reject counter replies with missing counterAmount', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(makeNegotiation());
+
+      await expect(
+        service.submitBuyerReply(NEGOTIATION_ID, BUYER_ID, {
+          responseType: 'counter',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject opinion replies when negotiation is not active', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(
+        makeNegotiation({ status: NegotiationStatus.FAILED }),
+      );
+
+      await expect(
+        service.submitBuyerReply(NEGOTIATION_ID, BUYER_ID, {
+          responseType: 'opinion',
+          comment: 'هذا رأيي',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('processBuyerDecision()', () => {
+    it('should create an aiLog entry and return a reply when Gemma responds', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(makeNegotiation());
+      const gemmaChat = jest.spyOn((service as any).gemma, 'chat').mockResolvedValue('هذا رد من جيمّا');
+      prisma.aiLog.create.mockResolvedValue({});
+
+      const result = await service.processBuyerDecision(makeNegotiation(), 'أريد تعليقًا رسميًا');
+
+      expect(gemmaChat).toHaveBeenCalled();
+      expect(prisma.aiLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            negotiationId: NEGOTIATION_ID,
+            actionType: expect.anything(),
+            message: 'هذا رد من جيمّا',
+          }),
+        }),
+      );
+      expect((result as any).message).toBe('هذا رد من جيمّا');
     });
   });
 
@@ -831,6 +1038,173 @@ describe('NegotiationService', () => {
       const result = await service.handleMessage(makeContext(), 'عايز عرض تاني');
 
       expect(result).not.toHaveProperty('action');
+    });
+  });
+
+  // ── Notification trigger points (T28) ───────────────────────────────────
+
+  describe('notification trigger points', () => {
+    let notifications: {
+      createForBoth: jest.Mock;
+      createForUser: jest.Mock;
+      sendWhatsApp: jest.Mock;
+    };
+
+    beforeEach(() => {
+      notifications = (service as any).notifications;
+    });
+
+    it('T17a: explicit reject → NEGOTIATION_FAILED fan-out', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(makeNegotiation());
+      prisma.negotiation.update.mockResolvedValue({});
+      prisma.aiLog.create.mockResolvedValue({});
+
+      await service.handleAction(NEGOTIATION_ID, 'reject');
+
+      expect(notifications.createForBoth).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'NEGOTIATION_FAILED' }),
+      );
+    });
+
+    it('T17b: max rounds → NEGOTIATION_FAILED fan-out', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue(
+        makeNegotiation({ roundNumber: MAX_ROUNDS }),
+      );
+      prisma.negotiation.update.mockResolvedValue({});
+      prisma.aiLog.create.mockResolvedValue({});
+
+      await service.handleAction(NEGOTIATION_ID, 'request_counter');
+
+      expect(notifications.createForBoth).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'NEGOTIATION_FAILED' }),
+      );
+    });
+
+    // ── BUG-01 regression: BELOW_MIN twice must not collide on `token` ──
+    it('BUG-01: BELOW_MIN twice → two escalation rows with distinct tokens', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue({
+        ...makeNegotiation(),
+        property: { id: PROPERTY_ID, title: 'شقة', price: 1_000_000, type: PropertyType.SALE, userId: SELLER_ID },
+        seller: { id: SELLER_ID, phone: '01000000000' },
+      });
+      const createCalls: Array<{ token: string }> = [];
+      prisma.negotiationEscalation = {
+        create: jest.fn().mockImplementation(({ data }: { data: { token: string } }) => {
+          createCalls.push({ token: data.token });
+          return Promise.resolve({ id: `esc-${createCalls.length}`, negotiationId: NEGOTIATION_ID, buyerOffer: 500_000, token: data.token, status: 'PENDING' });
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      };
+      prisma.aiLog.create.mockResolvedValue({});
+
+      await service.proposePrice(NEGOTIATION_ID, 500_000);
+      await service.proposePrice(NEGOTIATION_ID, 400_000);
+
+      expect(prisma.negotiationEscalation.create).toHaveBeenCalledTimes(2);
+      // Tokens passed to create must be DISTINCT (no hardcoded 'pending')
+      expect(createCalls[0].token).not.toBe(createCalls[1].token);
+      expect(createCalls[0].token).not.toBe('pending');
+      expect(createCalls[1].token).not.toBe('pending');
+    });
+
+    it('T12: proposePrice BELOW_MIN → OFFER_PROPOSED fan-out', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue({
+        ...makeNegotiation(),
+        property: {
+          id: PROPERTY_ID,
+          title: 'شقة',
+          price: 1_000_000,
+          type: PropertyType.SALE,
+          userId: SELLER_ID,
+        },
+        seller: { id: SELLER_ID, phone: '01000000000' },
+      });
+      prisma.negotiationEscalation = {
+        create: jest.fn().mockResolvedValue({ id: 'esc-1', negotiationId: NEGOTIATION_ID, buyerOffer: 500_000, token: 'pending', status: 'PENDING' }),
+        update: jest.fn().mockResolvedValue({ id: 'esc-1', token: 'tok' }),
+      };
+      prisma.aiLog.create.mockResolvedValue({});
+
+      await service.proposePrice(NEGOTIATION_ID, 500_000);
+
+      expect(notifications.createForBoth).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'OFFER_PROPOSED' }),
+      );
+    });
+
+    it('T16: proposePrice IN_BAND → NEGOTIATION_AGREED fan-out', async () => {
+      prisma.negotiation.findUnique.mockResolvedValue({
+        ...makeNegotiation(),
+        property: {
+          id: PROPERTY_ID,
+          title: 'شقة',
+          price: 1_000_000,
+          type: PropertyType.SALE,
+          userId: SELLER_ID,
+        },
+        seller: { id: SELLER_ID, phone: '01000000000' },
+      });
+      prisma.deal.create.mockResolvedValue({ id: DEAL_ID });
+      prisma.property.update.mockResolvedValue({});
+      prisma.aiLog.create.mockResolvedValue({});
+      // Mock payments service
+      (service as any).payments = {
+        initiateDeposit: jest.fn().mockResolvedValue({ paymentId: 'p1' }),
+      };
+
+      await service.proposePrice(NEGOTIATION_ID, 1_050_000);
+
+      expect(notifications.createForBoth).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'NEGOTIATION_AGREED' }),
+      );
+    });
+
+    it('T14: applySellerAction REJECT → OFFER_REJECTED to buyer', async () => {
+      const escToken = 'valid-token';
+      (service as any).jwtService.verify = jest.fn().mockReturnValue({ escalationId: 'esc-1' });
+      prisma.negotiationEscalation = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'esc-1',
+          negotiationId: NEGOTIATION_ID,
+          buyerOffer: 800_000,
+          token: escToken,
+          status: 'PENDING',
+          negotiation: makeNegotiation(),
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      };
+      prisma.negotiation.update.mockResolvedValue({});
+      prisma.aiLog.create.mockResolvedValue({});
+
+      await service.applySellerAction(escToken, 'REJECT');
+
+      expect(notifications.createForUser).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'OFFER_REJECTED' }),
+      );
+    });
+
+    it('T15: applySellerAction COUNTER → OFFER_COUNTERED to buyer', async () => {
+      const escToken = 'valid-token';
+      (service as any).jwtService.verify = jest.fn().mockReturnValue({ escalationId: 'esc-1' });
+      prisma.negotiationEscalation = {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'esc-1',
+          negotiationId: NEGOTIATION_ID,
+          buyerOffer: 800_000,
+          token: escToken,
+          status: 'PENDING',
+          negotiation: makeNegotiation(),
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      };
+      prisma.negotiation.update.mockResolvedValue({});
+      prisma.offer.create.mockResolvedValue({});
+
+      await service.applySellerAction(escToken, 'COUNTER', 900_000);
+
+      expect(notifications.createForUser).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'OFFER_COUNTERED' }),
+      );
     });
   });
 });
